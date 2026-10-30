@@ -216,16 +216,35 @@ with check (
 drop policy if exists "Senders can edit their own messages" on public.messages;
 create policy "Senders can edit their own messages"
 on public.messages for update to authenticated
-using (sender_id = (select auth.uid()) and deleted_at is null)
-with check (sender_id = (select auth.uid()));
+using (
+  sender_id = (select auth.uid())
+  and deleted_at is null
+  and exists (
+    select 1 from public.conversation_members cm
+    where cm.conversation_id = conversation_id and cm.user_id = (select auth.uid())
+  )
+)
+with check (
+  sender_id = (select auth.uid())
+  and exists (
+    select 1 from public.conversation_members cm
+    where cm.conversation_id = conversation_id and cm.user_id = (select auth.uid())
+  )
+);
 
--- Do not add public/anon policies. Grant authenticated users only the operations
--- intended by the RLS policies above.
-grant select, update on public.profiles to authenticated;
-grant select, insert, update, delete on public.friend_requests to authenticated;
+-- Restrict writable columns as well as rows. This prevents clients from changing
+-- ownership IDs, conversation IDs, and server-managed timestamps.
+revoke all on public.profiles, public.friend_requests, public.conversations,
+  public.conversation_members, public.messages from anon, authenticated;
+grant select on public.profiles to authenticated;
+grant update (username, display_name, avatar_url, bio) on public.profiles to authenticated;
+grant select, insert, delete on public.friend_requests to authenticated;
+grant update (status) on public.friend_requests to authenticated;
 grant select, insert on public.conversations to authenticated;
-grant select, insert, update on public.conversation_members to authenticated;
-grant select, insert, update on public.messages to authenticated;
+grant select, insert on public.conversation_members to authenticated;
+grant update (last_read_at) on public.conversation_members to authenticated;
+grant select, insert on public.messages to authenticated;
+grant update (body, edited_at, deleted_at) on public.messages to authenticated;
 
 -- Supabase Realtime: add messages to the publication if not already present.
 do $$
