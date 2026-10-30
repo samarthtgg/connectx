@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import { supabase } from "@/lib/supabase";
 
 type AuthMode = "login" | "signup";
@@ -138,7 +139,7 @@ export default function Home() {
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: { minHeight: "100dvh", display: "grid", placeItems: "center", padding: 20, background: "radial-gradient(circle at 20% 10%, #24204c 0, #10172a 38%, #090e19 100%)", color: "#f5f6ff", fontFamily: "Inter, system-ui, Arial, sans-serif" },
   card: { width: "100%", maxWidth: 430, padding: "34px 30px 26px", border: "1px solid #303956", borderRadius: 24, background: "rgba(18, 26, 45, .96)", boxShadow: "0 24px 80px rgba(0,0,0,.35)" },
   logo: { display: "flex", alignItems: "center", justifyContent: "center", gap: 9, fontSize: 27, fontWeight: 850, letterSpacing: "-1px" },
