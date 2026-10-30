@@ -117,6 +117,25 @@ drop trigger if exists conversations_set_updated_at on public.conversations;
 create trigger conversations_set_updated_at before update on public.conversations
 for each row execute procedure public.set_updated_at();
 
+-- SECURITY DEFINER helper avoids recursive RLS checks when policies need
+-- to verify conversation membership. It exposes only a boolean for auth.uid().
+create or replace function public.is_conversation_member(target_conversation uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $
+  select exists (
+    select 1 from public.conversation_members cm
+    where cm.conversation_id = target_conversation
+      and cm.user_id = (select auth.uid())
+  );
+$;
+
+revoke all on function public.is_conversation_member(uuid) from public, anon;
+grant execute on function public.is_conversation_member(uuid) to authenticated;
+
 alter table public.profiles enable row level security;
 alter table public.friend_requests enable row level security;
 alter table public.conversations enable row level security;
@@ -161,10 +180,7 @@ using (sender_id = (select auth.uid()) and status = 'pending');
 drop policy if exists "Members can read conversations" on public.conversations;
 create policy "Members can read conversations"
 on public.conversations for select to authenticated
-using (exists (
-  select 1 from public.conversation_members cm
-  where cm.conversation_id = id and cm.user_id = (select auth.uid())
-));
+using (public.is_conversation_member(id));
 
 drop policy if exists "Creator can create conversations" on public.conversations;
 create policy "Creator can create conversations"
@@ -174,10 +190,7 @@ with check (created_by = (select auth.uid()));
 drop policy if exists "Members can read conversation members" on public.conversation_members;
 create policy "Members can read conversation members"
 on public.conversation_members for select to authenticated
-using (exists (
-  select 1 from public.conversation_members mine
-  where mine.conversation_id = conversation_id and mine.user_id = (select auth.uid())
-));
+using (public.is_conversation_member(conversation_id));
 
 drop policy if exists "Creator can add initial members" on public.conversation_members;
 create policy "Creator can add initial members"
@@ -197,20 +210,14 @@ with check (user_id = (select auth.uid()));
 drop policy if exists "Members can read messages" on public.messages;
 create policy "Members can read messages"
 on public.messages for select to authenticated
-using (exists (
-  select 1 from public.conversation_members cm
-  where cm.conversation_id = conversation_id and cm.user_id = (select auth.uid())
-));
+using (public.is_conversation_member(conversation_id));
 
 drop policy if exists "Members can send messages as themselves" on public.messages;
 create policy "Members can send messages as themselves"
 on public.messages for insert to authenticated
 with check (
   sender_id = (select auth.uid())
-  and exists (
-    select 1 from public.conversation_members cm
-    where cm.conversation_id = conversation_id and cm.user_id = (select auth.uid())
-  )
+  and public.is_conversation_member(conversation_id)
 );
 
 drop policy if exists "Senders can edit their own messages" on public.messages;
@@ -219,10 +226,7 @@ on public.messages for update to authenticated
 using (
   sender_id = (select auth.uid())
   and deleted_at is null
-  and exists (
-    select 1 from public.conversation_members cm
-    where cm.conversation_id = conversation_id and cm.user_id = (select auth.uid())
-  )
+  and public.is_conversation_member(conversation_id)
 )
 with check (
   sender_id = (select auth.uid())
