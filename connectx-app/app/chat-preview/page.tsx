@@ -295,10 +295,6 @@ export default function ChatPreview() {
         ) : (
           <div className="cx-chats">
             {friends.map((friend) => {
-              const last = requests.find((r) =>
-                r.status === "accepted" &&
-                ((r.sender_id === userId && r.receiver_id === friend.id) || (r.sender_id === friend.id && r.receiver_id === userId))
-              );
               return <button key={friend.id} className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""}`}
                 onClick={() => chooseFriend(friend)}>
                 <span className="avatar">{initials(displayName(friend))}</span>
