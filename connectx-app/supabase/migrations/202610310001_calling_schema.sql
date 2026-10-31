@@ -87,7 +87,8 @@ with check (
   )
 );
 
-grant select, insert, update on public.call_sessions to authenticated;
+grant select, insert on public.call_sessions to authenticated;
+grant update (status, answer, ended_at, updated_at) on public.call_sessions to authenticated;
 grant select, insert on public.call_ice_candidates to authenticated;
 
 do $$
