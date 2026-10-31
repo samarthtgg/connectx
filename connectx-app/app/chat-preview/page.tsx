@@ -388,7 +388,7 @@ export default function ChatPreview() {
 
   useEffect(() => {
     if (!userId || !selectedFriend) return;
-    const channel = supabase.channel(`chat-live-${userId}-${selectedFriend.id}`)
+    const channel = supabase.channel(`chat-live-${[userId, selectedFriend.id].sort().join("-")}`)
       .on("broadcast", { event: "typing" }, ({ payload }) => setTyping(!!payload?.typing))
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
         const row = payload.new as DirectMessage;
