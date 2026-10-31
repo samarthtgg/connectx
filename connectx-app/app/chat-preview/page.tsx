@@ -9,6 +9,9 @@ type Profile = {
   username: string | null;
   full_name: string | null;
   avatar_url: string | null;
+  bio?: string | null;
+  is_private?: boolean;
+  show_last_seen?: boolean;
 };
 type FriendRequest = {
   id: string;
@@ -54,6 +57,13 @@ const timeLabel = (value: string) =>
 export default function ChatPreview() {
   const [userId, setUserId] = useState("");
   const [myProfile, setMyProfile] = useState<Profile | null>(null);
+  const [profileName, setProfileName] = useState("");
+  const [profileUsername, setProfileUsername] = useState("");
+  const [profileBio, setProfileBio] = useState("");
+  const [profilePrivate, setProfilePrivate] = useState(false);
+  const [showLastSeen, setShowLastSeen] = useState(true);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
@@ -94,7 +104,7 @@ export default function ChatPreview() {
 
   const loadBase = useCallback(async (id: string) => {
     const [profileResult, peopleResult, requestResult] = await Promise.all([
-      supabase.from("profiles").select("id,username,full_name,avatar_url").eq("id", id).maybeSingle(),
+      supabase.from("profiles") .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen").eq("id", id).maybeSingle(),
       supabase.from("profiles").select("id,username,full_name,avatar_url").neq("id", id).order("full_name"),
       supabase.from("friend_requests").select("id,sender_id,receiver_id,status,created_at")
         .or(`sender_id.eq.${id},receiver_id.eq.${id}`).order("created_at", { ascending: false }),
@@ -103,6 +113,13 @@ export default function ChatPreview() {
     if (peopleResult.error) throw peopleResult.error;
     if (requestResult.error) throw requestResult.error;
     setMyProfile(profileResult.data);
+    if (profileResult.data) {
+      setProfileName(profileResult.data.full_name ?? "");
+      setProfileUsername(profileResult.data.username ?? "");
+      setProfileBio(profileResult.data.bio ?? "");
+      setProfilePrivate(!!profileResult.data.is_private);
+      setShowLastSeen(profileResult.data.show_last_seen !== false);
+    }
     setProfiles((peopleResult.data ?? []) as Profile[]);
     setRequests((requestResult.data ?? []) as FriendRequest[]);
   }, []);
@@ -376,6 +393,41 @@ export default function ChatPreview() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId || savingProfile) return;
+    const username = profileUsername.trim().replace(/^@/, "").toLowerCase();
+    if (username && !/^[a-z0-9_]{3,20}$/.test(username)) {
+      setError("Username must be 3–20 characters and use only letters, numbers or underscores.");
+      return;
+    }
+    setSavingProfile(true); setError(""); setNotice("");
+    try {
+      let avatarUrl = myProfile?.avatar_url ?? null;
+      if (avatarFile) {
+        if (!["image/jpeg", "image/png", "image/webp"].includes(avatarFile.type)) throw new Error("Choose a JPG, PNG or WebP image.");
+        if (avatarFile.size > 5 * 1024 * 1024) throw new Error("Profile photo must be 5 MB or smaller.");
+        const extension = avatarFile.type === "image/png" ? "png" : avatarFile.type === "image/webp" ? "webp" : "jpg";
+        const path = `${userId}/avatar.${extension}`;
+        const { error: uploadError } = await supabase.storage.from("connectx-avatars").upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+        if (uploadError) throw uploadError;
+        const { data: publicUrl } = supabase.storage.from("connectx-avatars").getPublicUrl(path);
+        avatarUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
+      }
+      const updates = { full_name: profileName.trim() || null, username: username || null, bio: profileBio.trim() || null, avatar_url: avatarUrl, is_private: profilePrivate, show_last_seen: showLastSeen };
+      const { data, error: updateError } = await supabase.from("profiles").update(updates).eq("id", userId)
+        .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen").single();
+      if (updateError) throw updateError;
+      setMyProfile(data as Profile);
+      setProfiles((old) => old.map((profile) => profile.id === userId ? data as Profile : profile));
+      setAvatarFile(null);
+      setNotice("Profile updated successfully.");
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Could not update profile.";
+      setError(message.includes("profiles_username_lower_unique") ? "That username is already taken. Try another one." : message);
+    } finally { setSavingProfile(false); }
   }
 
   async function signOut() {
@@ -691,12 +743,22 @@ export default function ChatPreview() {
         <div className="list-label">{tab.toUpperCase()} <span>{tab === "Friends" ? filteredProfiles.length : tab === "Messages" ? friends.length : ""}</span></div>
 
         {loading ? <p className="empty">Loading your account…</p> : tab === "Settings" ? (
-          <div className="settings-panel">
-            <div className="large-avatar">{initials(myProfile?.full_name || myProfile?.username || "U")}</div>
-            <h3>{myProfile ? displayName(myProfile) : "Your profile"}</h3>
-            <p>{myProfile?.username ? `@${myProfile.username}` : "Choose a username later"}</p>
-            <button className="action-btn secondary" onClick={signOut} disabled={busy}>Sign out</button>
-          </div>
+          <form className="settings-panel profile-editor" onSubmit={saveProfile}>
+            <div className="profile-photo-wrap">
+              {myProfile?.avatar_url && !avatarFile ? <img className="profile-photo" src={myProfile.avatar_url} alt="Your profile" /> : <div className="large-avatar">{initials(profileName || profileUsername || "U")}</div>}
+            </div>
+            <label className="profile-field">Profile photo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)} /></label>
+            <label className="profile-field">Display name<input value={profileName} onChange={(e) => setProfileName(e.target.value)} maxLength={60} placeholder="Your name" /></label>
+            <label className="profile-field">Username<input value={profileUsername} onChange={(e) => setProfileUsername(e.target.value)} maxLength={20} placeholder="username" autoCapitalize="none" /></label>
+            <small className="profile-hint">3–20 characters · letters, numbers and underscores</small>
+            <label className="profile-field">Bio<textarea value={profileBio} onChange={(e) => setProfileBio(e.target.value)} maxLength={160} rows={3} placeholder="A little about you…" /></label>
+            <small className="profile-hint">{profileBio.length}/160 characters</small>
+            <div className="privacy-heading">PRIVACY</div>
+            <label className="privacy-option"><span><strong>Private profile</strong><small>Privacy preference for future profile discovery controls</small></span><input type="checkbox" checked={profilePrivate} onChange={(e) => setProfilePrivate(e.target.checked)} /></label>
+            <label className="privacy-option"><span><strong>Show last seen</strong><small>Allow friends to see your last active time when presence is added</small></span><input type="checkbox" checked={showLastSeen} onChange={(e) => setShowLastSeen(e.target.checked)} /></label>
+            <button className="action-btn" type="submit" disabled={savingProfile}>{savingProfile ? "Saving…" : "Save profile"}</button>
+            <button className="action-btn secondary" type="button" onClick={signOut} disabled={busy || savingProfile}>Sign out</button>
+          </form>
         ) : tab === "Friends" ? (
           <div className="cx-chats">
             <div className="section-caption">PEOPLE</div>
@@ -858,7 +920,7 @@ export default function ChatPreview() {
         .back-btn { display:none;border:0;background:transparent;color:#c9bfff;font-size:28px; }.empty-state { margin:auto;color:#8490a9;text-align:center;padding:20px; }
         .section-caption { padding:14px 12px 7px;color:#77839c;font-size:9px;font-weight:800;letter-spacing:1.4px; }.request-caption { border-top:1px solid #263149;margin-top:12px; }
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
-        .request-row { display:flex;align-items:center;gap:7px;padding:10px 12px;color:#dce2f2;font-size:11px; }.request-row span { flex:1; }.settings-panel { padding:24px;text-align:center; }.large-avatar { width:64px;height:64px;margin:8px auto 14px;font-size:20px; }.settings-panel h3 { margin:0;font-size:16px; }.settings-panel p { color:#8b96ad;font-size:12px; }.action-btn { padding:12px 18px;margin-top:12px; }.toast { position:fixed;z-index:5;bottom:22px;left:50%;transform:translateX(-50%);max-width:min(92vw,560px);display:flex;gap:14px;align-items:center;padding:12px 15px;border:1px solid #3b4a65;border-radius:12px;background:#1b2940;color:#dce6ff;font-size:12px;box-shadow:0 10px 40px #0008; }.toast button { border:0;background:transparent;color:white;font-size:18px; }.error-toast { border-color:#8a4250;background:#3a202c;color:#ffd2d9; }
+        .request-row { display:flex;align-items:center;gap:7px;padding:10px 12px;color:#dce2f2;font-size:11px; }.request-row span { flex:1; }.settings-panel { padding:24px;text-align:center; }.large-avatar { width:76px;height:76px;margin:8px auto 14px;font-size:24px;border-radius:50%;display:grid;place-items:center;background:#29334b;color:#fff; }.profile-photo-wrap { display:flex;justify-content:center;margin:8px 0 18px; }.profile-photo { width:88px;height:88px;border-radius:50%;object-fit:cover;border:2px solid #56617b; }.profile-editor { text-align:left;display:flex;flex-direction:column;gap:10px; }.profile-field { display:flex;flex-direction:column;gap:6px;text-align:left;color:#cbd5e8;font-size:12px;font-weight:600; }.profile-field input,.profile-field textarea { width:100%;box-sizing:border-box;border:1px solid #35415a;border-radius:9px;background:#111a2b;color:#f3f6ff;padding:11px;font:inherit;font-weight:400; }.profile-field input[type=file] { font-size:11px; }.profile-field textarea { resize:vertical; }.profile-hint { color:#8290aa;font-size:10px;text-align:left;margin-top:-7px; }.privacy-heading { color:#9ca9c1;font-size:10px;letter-spacing:1px;text-align:left;margin-top:12px; }.privacy-option { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px;border:1px solid #303b53;border-radius:10px;text-align:left; }.privacy-option span { display:flex;flex-direction:column;gap:4px; }.privacy-option strong { color:#e9eefb;font-size:12px; }.privacy-option small { color:#8b96ad;font-size:10px; }.privacy-option input { accent-color:#8e80ff;width:18px;height:18px; }.action-btn { padding:12px 18px;margin-top:12px; }.toast { position:fixed;z-index:5;bottom:22px;left:50%;transform:translateX(-50%);max-width:min(92vw,560px);display:flex;gap:14px;align-items:center;padding:12px 15px;border:1px solid #3b4a65;border-radius:12px;background:#1b2940;color:#dce6ff;font-size:12px;box-shadow:0 10px 40px #0008; }.toast button { border:0;background:transparent;color:white;font-size:18px; }.error-toast { border-color:#8a4250;background:#3a202c;color:#ffd2d9; }
         @media(max-width:700px) { .cx-rail { width:54px; }.cx-list { width:calc(100% - 54px);min-width:0; }.cx-conversation { display:none; }.cx-conversation.show-mobile { display:flex;position:absolute;inset:0 0 0 54px;z-index:2; }.cx-list.hide-mobile { display:none; }.back-btn { display:block; }.conversation-head { padding:0 12px;gap:9px; }.composer { padding:12px; }.messages-area { padding:20px 14px; } }
       `}</style>
     </main>
