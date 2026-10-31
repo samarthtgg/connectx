@@ -39,7 +39,10 @@ type DirectMessage = {
   receiver_id: string;
   content: string;
   created_at: string;
+  read_at?: string | null;
 };
+type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
+type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null };
 
 const displayName = (profile: Profile) =>
   profile.full_name?.trim() || profile.username || "ConnectX user";
@@ -54,6 +57,16 @@ export default function ChatPreview() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [reactions, setReactions] = useState<MessageReaction[]>([]);
+  const [typing, setTyping] = useState(false);
+  const [selectedChats, setSelectedChats] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const [reactionMessage, setReactionMessage] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+  const typingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [tab, setTab] = useState<"Messages" | "Friends" | "Settings">("Messages");
   const [search, setSearch] = useState("");
@@ -124,6 +137,8 @@ export default function ChatPreview() {
     return () => { active = false; };
   }, [loadBase]);
 
+  useEffect(() => { if (userId) void loadChatPreferences().catch((e) => setError(e.message)); }, [userId, loadChatPreferences]);
+
   const acceptedIds = useMemo(() => {
     const ids = new Set<string>();
     for (const request of requests) {
@@ -139,8 +154,8 @@ export default function ChatPreview() {
     [requests, userId],
   );
   const friends = useMemo(
-    () => profiles.filter((profile) => acceptedIds.has(profile.id)),
-    [profiles, acceptedIds],
+    () => profiles.filter((profile) => acceptedIds.has(profile.id) && !chatPreferences.find((pref) => pref.friend_id === profile.id)?.hidden_at),
+    [profiles, acceptedIds, chatPreferences],
   );
   const filteredProfiles = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -151,15 +166,34 @@ export default function ChatPreview() {
     });
   }, [profiles, search]);
 
+  const loadChatPreferences = useCallback(async () => {
+    if (!userId) return;
+    const { data, error: prefError } = await supabase.from("chat_preferences")
+      .select("friend_id,cleared_at,hidden_at").eq("user_id", userId);
+    if (prefError) throw prefError;
+    setChatPreferences((data ?? []) as ChatPreference[]);
+  }, [userId]);
+
   const loadMessages = useCallback(async (friendId: string) => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
-      .select("id,sender_id,receiver_id,content,created_at")
+      .select("id,sender_id,receiver_id,content,created_at,read_at")
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (messageError) throw messageError;
-    setMessages((data ?? []) as DirectMessage[]);
-  }, [userId]);
+    const pref = chatPreferences.find((item) => item.friend_id === friendId);
+    const visible = (data ?? []).filter((item) => !pref?.cleared_at || new Date(item.created_at) > new Date(pref.cleared_at));
+    setMessages(visible as DirectMessage[]);
+    const ids = visible.map((item) => item.id);
+    if (ids.length) {
+      const { data: reactionRows, error: reactionError } = await supabase.from("message_reactions")
+        .select("id,message_id,user_id,emoji").in("message_id", ids);
+      if (reactionError) throw reactionError;
+      setReactions((reactionRows ?? []) as MessageReaction[]);
+    } else setReactions([]);
+    await supabase.from("messages").update({ read_at: new Date().toISOString() })
+      .eq("sender_id", friendId).eq("receiver_id", userId).is("read_at", null);
+  }, [userId, chatPreferences]);
 
   useEffect(() => {
     if (!userId || !selectedFriend) {
@@ -188,6 +222,10 @@ export default function ChatPreview() {
   }, [userId, selectedFriend, loadMessages]);
 
   async function chooseFriend(friend: Profile) {
+    if (selectionMode) {
+      setSelectedChats((old) => old.includes(friend.id) ? old.filter((id) => id !== friend.id) : [...old, friend.id]);
+      return;
+    }
     setSelectedFriend(friend);
     setShowMobileChat(true);
     setTab("Messages");
@@ -236,6 +274,68 @@ export default function ChatPreview() {
     }
   }
 
+  async function saveChatPreference(friendId: string, patch: { cleared_at?: string | null; hidden_at?: string | null }) {
+    const { error: prefError } = await supabase.from("chat_preferences").upsert({
+      user_id: userId, friend_id: friendId, ...patch, updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,friend_id" });
+    if (prefError) throw prefError;
+    await loadChatPreferences();
+  }
+
+  async function clearSelectedChats(hide = false) {
+    if (!selectedChats.length) return;
+    try {
+      const stamp = new Date().toISOString();
+      for (const friendId of selectedChats) {
+        await saveChatPreference(friendId, hide ? { hidden_at: stamp } : { cleared_at: stamp });
+      }
+      if (selectedFriend && selectedChats.includes(selectedFriend.id)) {
+        if (hide) { setSelectedFriend(null); setShowMobileChat(false); }
+        else { setMessages([]); setReactions([]); }
+      }
+      setSelectedChats([]); setSelectionMode(false);
+      setNotice(hide ? "Selected chats hidden from your view." : "Selected chats cleared from your view.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not update selected chats."); }
+  }
+
+  function beginLongPress(friendId: string) {
+    longPressTriggered.current = false;
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      setSelectionMode(true);
+      setSelectedChats((old) => old.includes(friendId) ? old : [...old, friendId]);
+    }, 550);
+  }
+  function endLongPress() {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  }
+
+  async function toggleReaction(messageId: string, emoji: string) {
+    const existing = reactions.find((item) => item.message_id === messageId && item.user_id === userId);
+    try {
+      if (existing?.emoji === emoji) {
+        const { error: deleteError } = await supabase.from("message_reactions").delete().eq("id", existing.id);
+        if (deleteError) throw deleteError;
+      } else if (existing) {
+        const { error: deleteError } = await supabase.from("message_reactions").delete().eq("id", existing.id);
+        if (deleteError) throw deleteError;
+        const { data, error: insertError } = await supabase.from("message_reactions")
+          .insert({ message_id: messageId, user_id: userId, emoji }).select("id,message_id,user_id,emoji").single();
+        if (insertError) throw insertError;
+        setReactions((old) => [...old.filter((item) => item.id !== existing.id), data as MessageReaction]);
+      } else {
+        const { data, error: insertError } = await supabase.from("message_reactions")
+          .insert({ message_id: messageId, user_id: userId, emoji }).select("id,message_id,user_id,emoji").single();
+        if (insertError) throw insertError;
+        setReactions((old) => [...old, data as MessageReaction]);
+      }
+      if (existing?.emoji === emoji) setReactions((old) => old.filter((item) => item.id !== existing.id));
+      setReactionMessage(null);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save reaction."); }
+  }
+
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
@@ -249,7 +349,7 @@ export default function ChatPreview() {
       }
       const { data, error: insertError } = await supabase.from("messages")
         .insert({ sender_id: authData.user.id, receiver_id: selectedFriend.id, content })
-        .select("id,sender_id,receiver_id,content,created_at")
+        .select("id,sender_id,receiver_id,content,created_at,read_at")
         .single();
       if (insertError) {
         console.error("ConnectX message insert failed", {
@@ -269,6 +369,7 @@ export default function ChatPreview() {
       } else if (data) {
         setMessages((old) => old.some((item) => item.id === data.id) ? old : [...old, data as DirectMessage]);
         setDraft("");
+        if (typingChannel.current) void typingChannel.current.send({ type: "broadcast", event: "typing", payload: { typing: false } });
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not send message.");
@@ -283,6 +384,33 @@ export default function ChatPreview() {
     if (signOutError) setError(signOutError.message);
     else window.location.href = "/";
     setBusy(false);
+  }
+
+  useEffect(() => {
+    if (!userId || !selectedFriend) return;
+    const channel = supabase.channel(`chat-live-${userId}-${selectedFriend.id}`)
+      .on("broadcast", { event: "typing" }, ({ payload }) => setTyping(!!payload?.typing))
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `receiver_id=eq.${userId}` }, (payload) => {
+        const row = payload.new as DirectMessage;
+        if (row.sender_id === selectedFriend.id) setMessages((old) => old.map((m) => m.id === row.id ? { ...m, read_at: row.read_at } : m));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (payload) => {
+        const row = (payload.new ?? payload.old) as MessageReaction;
+        if (!row?.message_id) return;
+        if (payload.eventType === "DELETE") setReactions((old) => old.filter((item) => item.id !== row.id));
+        else setReactions((old) => [...old.filter((item) => item.id !== row.id), row]);
+      }).subscribe();
+    typingChannel.current = channel;
+    return () => { typingChannel.current = null; setTyping(false); void supabase.removeChannel(channel); };
+  }, [userId, selectedFriend]);
+
+  async function broadcastTyping(value: string) {
+    if (!typingChannel.current) return;
+    await typingChannel.current.send({ type: "broadcast", event: "typing", payload: { typing: !!value.trim() } });
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+    if (value.trim()) typingTimeout.current = setTimeout(() => {
+      void typingChannel.current?.send({ type: "broadcast", event: "typing", payload: { typing: false } });
+    }, 1800);
   }
 
   const activeName = selectedFriend ? displayName(selectedFriend) : "";
@@ -598,9 +726,12 @@ export default function ChatPreview() {
           </div>
         ) : (
           <div className="cx-chats">
+            {selectionMode && <div className="bulk-actions"><strong>{selectedChats.length} selected</strong><button onClick={() => clearSelectedChats(false)}>Clear</button><button onClick={() => clearSelectedChats(true)}>Hide</button><button onClick={() => { setSelectionMode(false); setSelectedChats([]); }}>Cancel</button></div>}
             {friends.map((friend) => {
-              return <button key={friend.id} className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""}`}
-                onClick={() => chooseFriend(friend)}>
+              return <button key={friend.id} className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""} ${selectedChats.includes(friend.id) ? "chat-selected" : ""}`}
+                onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
+                onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
+                onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } chooseFriend(friend); }}>
                 <span className="avatar">{initials(displayName(friend))}</span>
                 <span className="chat-info"><strong>{displayName(friend)}</strong><small>{friend.username ? `@${friend.username}` : "Tap to open chat"}</small></span>
               </button>;
@@ -627,17 +758,22 @@ export default function ChatPreview() {
           </header>
           <div className="messages-area">
             <div className="today">DIRECT MESSAGES</div>
+            {typing && <div className="typing-indicator"><span></span><span></span><span></span> {activeName} is typing</div>}
             {messages.map((message) => {
               const mine = message.sender_id === userId;
               return <div key={message.id} className={mine ? "message-line mine" : "message-line"}>
                 <div className={mine ? "bubble mine-bubble" : "bubble"}><p>{message.content}</p>
-                  <small>{timeLabel(message.created_at)} {mine ? "✓" : ""}</small></div>
+                  <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
+                  {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
+                  {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
+                  <button className="react-trigger" onClick={() => setReactionMessage(reactionMessage === message.id ? null : message.id)} aria-label="React to message">☺</button>
+                </div>
               </div>;
             })}
             {messages.length === 0 && <p className="empty">No messages yet. Say hello!</p>}
           </div>
           <form className="composer" onSubmit={sendMessage}>
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Write a message…" maxLength={5000} />
+            <input value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); }} placeholder="Write a message…" maxLength={5000} />
             <button className="send" disabled={!draft.trim() || busy} aria-label="Send message">{busy ? "…" : "➤"}</button>
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
@@ -718,6 +854,7 @@ export default function ChatPreview() {
         .composer { display:flex;align-items:center;gap:10px;padding:15px 20px;border-top:1px solid #232d42;background:#121a2b; }.composer input { padding:14px;border:1px solid #37425c;border-radius:12px;background:#0c1424;font-size:13px; }.send,.mini-btn,.action-btn { border:0;border-radius:10px;background:#7868eb;color:white;font-weight:700;cursor:pointer; }.send { width:42px;height:42px;flex-shrink:0;font-size:17px; }.send:disabled,.mini-btn:disabled { opacity:.4;cursor:not-allowed; }
         .call-actions { display:flex;gap:8px;margin-left:auto; }.call-icon { width:36px;height:36px;border:1px solid #3b4560;border-radius:11px;background:#202a40;color:#d9d2ff;font-size:17px;cursor:pointer; }.call-icon:disabled { opacity:.4;cursor:not-allowed; }
         .call-overlay { position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:18px;background:#050914dd;backdrop-filter:blur(8px); }.incoming-card,.active-call-card { width:min(100%,520px);border:1px solid #3a4562;border-radius:22px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;overflow:hidden; }.incoming-card { padding:34px 24px;text-align:center; }.call-avatar { width:82px;height:82px;margin:10px auto 20px;display:grid;place-items:center;border-radius:50%;background:#6257b5;color:white;font-size:36px; }.incoming-card h2 { margin:0;font-size:20px; }.incoming-card p { color:#9ca8c0;font-size:13px; }.incoming-actions,.call-controls { display:flex;justify-content:center;gap:12px;margin-top:26px; }.incoming-actions button,.call-controls button { padding:12px 18px;border:0;border-radius:12px;background:#303b53;color:#fff;font-weight:700; }.accept-call { background:#23875e!important; }.decline-call,.hangup { background:#b83c55!important; }.active-call-card { padding:18px; }.call-topline { display:flex;justify-content:space-between;gap:12px;align-items:center;padding:4px 4px 14px;font-size:13px; }.call-topline span { color:#9da9c0;font-size:11px; }.video-stage { position:relative;height:min(58vh,420px);min-height:230px;border-radius:15px;overflow:hidden;background:#070b14; }.remote-video { width:100%;height:100%;object-fit:cover; }.local-video { position:absolute;right:12px;bottom:12px;width:26%;max-height:35%;aspect-ratio:3/4;object-fit:cover;border:2px solid #fff;border-radius:12px;background:#202a40; }.video-placeholder { position:absolute;inset:0;display:grid;place-items:center;color:#aab5ca;font-size:12px;pointer-events:none; }.audio-stage { min-height:260px;display:grid;align-content:center;text-align:center;color:#aab5ca; }.audio-stage .call-avatar { margin-bottom:4px; }.audio-stage p { font-size:12px; }.call-controls { margin:18px 0 4px;flex-wrap:wrap; }.call-controls .control-on { background:#6557c7; }
+        .read-ticks { color:#54b9ff;font-weight:900;letter-spacing:-3px;padding-right:3px; }.reaction-chip { margin:6px 4px 0 0;padding:4px 7px;border:1px solid #56617b;border-radius:12px;background:#27344d;color:white;font-size:11px; }.reaction-picker { display:flex;gap:4px;margin-top:7px;padding:5px;background:#101a2c;border:1px solid #45516d;border-radius:20px;width:max-content; }.reaction-picker button,.react-trigger { border:0;background:transparent;color:white;font-size:17px;cursor:pointer; }.react-trigger { display:block;margin-left:auto;font-size:13px;color:#b8c3d9; }.typing-indicator { align-self:flex-start;color:#aeb9d0;font-size:11px;display:flex;align-items:center;gap:4px; }.typing-indicator span { width:5px;height:5px;border-radius:50%;background:#a99aff;animation:typingPulse .8s infinite alternate; }.typing-indicator span:nth-child(2) { animation-delay:.2s; }.typing-indicator span:nth-child(3) { animation-delay:.4s; } @keyframes typingPulse { to { opacity:.25;transform:translateY(-3px); } }.bulk-actions { display:flex;align-items:center;gap:6px;padding:8px;position:sticky;top:0;background:#121a2b;z-index:2; }.bulk-actions strong { flex:1;font-size:11px; }.bulk-actions button { border:1px solid #46516b;border-radius:8px;padding:6px;background:#202a40;color:#fff;font-size:10px; }.chat-row.chat-selected { outline:2px solid #8e80ff;background:#28264a; }
         .back-btn { display:none;border:0;background:transparent;color:#c9bfff;font-size:28px; }.empty-state { margin:auto;color:#8490a9;text-align:center;padding:20px; }
         .section-caption { padding:14px 12px 7px;color:#77839c;font-size:9px;font-weight:800;letter-spacing:1.4px; }.request-caption { border-top:1px solid #263149;margin-top:12px; }
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
