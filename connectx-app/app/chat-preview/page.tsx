@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { supabase } from "@/lib/supabase";
 
@@ -16,6 +16,22 @@ type FriendRequest = {
   receiver_id: string;
   status: string | null;
   created_at: string | null;
+};
+type CallSession = {
+  id: string;
+  caller_id: string;
+  receiver_id: string;
+  status: "ringing" | "accepted" | "rejected" | "ended" | "missed";
+  call_type: "audio" | "video";
+  offer: RTCSessionDescriptionInit;
+  answer: RTCSessionDescriptionInit | null;
+  created_at: string;
+};
+type IceCandidateRow = {
+  id: string;
+  call_id: string;
+  sender_id: string;
+  candidate: RTCIceCandidateInit;
 };
 type DirectMessage = {
   id: string;
@@ -47,6 +63,21 @@ export default function ChatPreview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showMobileChat, setShowMobileChat] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<CallSession | null>(null);
+  const [activeCall, setActiveCall] = useState<CallSession | null>(null);
+  const [callMode, setCallMode] = useState<"audio" | "video">("audio");
+  const [callStatus, setCallStatus] = useState("");
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [muted, setMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const callIdRef = useRef("");
+  const pendingLocalCandidates = useRef<RTCIceCandidateInit[]>([]);
+  const pendingRemoteCandidates = useRef<RTCIceCandidateInit[]>([]);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const loadBase = useCallback(async (id: string) => {
     const [profileResult, peopleResult, requestResult] = await Promise.all([
@@ -256,6 +287,256 @@ export default function ChatPreview() {
 
   const activeName = selectedFriend ? displayName(selectedFriend) : "";
 
+  const resetCall = useCallback(() => {
+    pcRef.current?.close();
+    pcRef.current = null;
+    callIdRef.current = "";
+    pendingLocalCandidates.current = [];
+    pendingRemoteCandidates.current = [];
+    localStream?.getTracks().forEach((track) => track.stop());
+    setLocalStream(null);
+    setRemoteStream(null);
+    setActiveCall(null);
+    setIncomingCall(null);
+    setCallStatus("");
+    setMuted(false);
+    setCameraOff(false);
+  }, [localStream]);
+
+  const flushRemoteCandidates = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc?.remoteDescription) return;
+    const queued = pendingRemoteCandidates.current.splice(0);
+    for (const candidate of queued) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); }
+      catch (reason) { console.warn("ConnectX ICE candidate could not be added", reason); }
+    }
+  }, []);
+
+  const createCallPeer = useCallback((stream: MediaStream) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+      ],
+    });
+    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    pc.ontrack = (event) => {
+      const incoming = event.streams[0];
+      if (incoming) setRemoteStream(incoming);
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "connected") setCallStatus("Connected");
+      if (pc.connectionState === "failed") setCallStatus("Connection failed. Try another network.");
+      if (pc.connectionState === "disconnected") setCallStatus("Connection interrupted…");
+    };
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      const candidate = event.candidate.toJSON();
+      const callId = callIdRef.current;
+      if (!callId) {
+        pendingLocalCandidates.current.push(candidate);
+        return;
+      }
+      void supabase.from("call_ice_candidates").insert({
+        call_id: callId, sender_id: userId, candidate,
+      }).then(({ error: candidateError }) => {
+        if (candidateError) console.error("ConnectX ICE signaling error", candidateError);
+      });
+    };
+    pcRef.current = pc;
+    return pc;
+  }, [userId]);
+
+  const flushLocalCandidates = useCallback(async (callId: string) => {
+    const queued = pendingLocalCandidates.current.splice(0);
+    if (!queued.length) return;
+    const { error: candidateError } = await supabase.from("call_ice_candidates").insert(
+      queued.map((candidate) => ({ call_id: callId, sender_id: userId, candidate })),
+    );
+    if (candidateError) throw candidateError;
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase.channel(`incoming-calls-${userId}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "call_sessions",
+        filter: `receiver_id=eq.${userId}`,
+      }, (payload) => {
+        const call = payload.new as CallSession;
+        if (call.status === "ringing" && !activeCall && !incomingCall) {
+          setIncomingCall(call);
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED" && !activeCall && !incomingCall) {
+          const { data } = await supabase.from("call_sessions")
+            .select("id,caller_id,receiver_id,status,call_type,offer,answer,created_at")
+            .eq("receiver_id", userId).eq("status", "ringing")
+            .order("created_at", { ascending: false }).limit(1).maybeSingle();
+          if (data) setIncomingCall(data as CallSession);
+        }
+      });
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId, activeCall, incomingCall]);
+
+  useEffect(() => {
+    if (!activeCall || !userId) return;
+    const channel = supabase.channel(`active-call-${activeCall.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "call_sessions",
+        filter: `id=eq.${activeCall.id}`,
+      }, (payload) => {
+        const updated = payload.new as CallSession;
+        if (updated.status === "rejected" || updated.status === "ended" || updated.status === "missed") {
+          resetCall();
+          return;
+        }
+        if (updated.answer && updated.caller_id === userId && pcRef.current && !pcRef.current.remoteDescription) {
+          void pcRef.current.setRemoteDescription(new RTCSessionDescription(updated.answer))
+            .then(flushRemoteCandidates)
+            .catch((reason) => setError(reason instanceof Error ? reason.message : "Could not connect the call."));
+          setCallStatus("Connecting…");
+        }
+      })
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "call_ice_candidates",
+        filter: `call_id=eq.${activeCall.id}`,
+      }, (payload) => {
+        const row = payload.new as IceCandidateRow;
+        if (row.sender_id === userId || !pcRef.current) return;
+        if (pcRef.current.remoteDescription) {
+          void pcRef.current.addIceCandidate(new RTCIceCandidate(row.candidate))
+            .catch((reason) => console.warn("ConnectX ICE candidate error", reason));
+        } else {
+          pendingRemoteCandidates.current.push(row.candidate);
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          const [{ data: session }, { data: candidates }] = await Promise.all([
+            supabase.from("call_sessions").select("id,caller_id,receiver_id,status,call_type,offer,answer,created_at")
+              .eq("id", activeCall.id).maybeSingle(),
+            supabase.from("call_ice_candidates").select("id,call_id,sender_id,candidate")
+              .eq("call_id", activeCall.id).order("created_at"),
+          ]);
+          if (session?.status === "rejected" || session?.status === "ended" || session?.status === "missed") {
+            resetCall();
+            return;
+          }
+          if (session?.answer && session.caller_id === userId && pcRef.current && !pcRef.current.remoteDescription) {
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(session.answer));
+            await flushRemoteCandidates();
+          }
+          for (const row of (candidates ?? []) as IceCandidateRow[]) {
+            if (row.sender_id === userId) continue;
+            if (pcRef.current?.remoteDescription) {
+              try { await pcRef.current.addIceCandidate(new RTCIceCandidate(row.candidate)); }
+              catch (reason) { console.warn("ConnectX existing ICE candidate error", reason); }
+            } else pendingRemoteCandidates.current.push(row.candidate);
+          }
+        }
+      });
+    return () => { void supabase.removeChannel(channel); };
+  }, [activeCall?.id, userId, resetCall, flushRemoteCandidates]);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream;
+    if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteAudioRef.current && remoteStream) remoteAudioRef.current.srcObject = remoteStream;
+  }, [localStream, remoteStream, callMode]);
+
+  async function startCall(mode: "audio" | "video") {
+    if (!selectedFriend || !userId || activeCall || incomingCall) return;
+    setError(""); setNotice(""); setCallStatus("Preparing call…");
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
+      const pc = createCallPeer(stream);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const { data, error: insertError } = await supabase.from("call_sessions")
+        .insert({
+          caller_id: userId, receiver_id: selectedFriend.id, call_type: mode,
+          status: "ringing", offer: pc.localDescription?.toJSON() ?? offer,
+        })
+        .select("id,caller_id,receiver_id,status,call_type,offer,answer,created_at").single();
+      if (insertError) throw insertError;
+      callIdRef.current = data.id;
+      await flushLocalCandidates(data.id);
+      setLocalStream(stream);
+      setCallMode(mode);
+      setActiveCall(data as CallSession);
+      setCallStatus(`Calling ${displayName(selectedFriend)}…`);
+    } catch (reason) {
+      stream?.getTracks().forEach((track) => track.stop());
+      pcRef.current?.close(); pcRef.current = null; callIdRef.current = "";
+      setCallStatus("");
+      setError(reason instanceof Error ? reason.message : "Could not start the call. Check camera and microphone permissions.");
+    }
+  }
+
+  async function acceptCall(call: CallSession) {
+    let stream: MediaStream | null = null;
+    setError(""); setCallStatus("Joining call…");
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: true, video: call.call_type === "video",
+      });
+      callIdRef.current = call.id;
+      const pc = createCallPeer(stream);
+      await pc.setRemoteDescription(new RTCSessionDescription(call.offer));
+      await flushRemoteCandidates();
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      const { error: updateError } = await supabase.from("call_sessions")
+        .update({ answer: pc.localDescription?.toJSON() ?? answer, status: "accepted" })
+        .eq("id", call.id).eq("receiver_id", userId);
+      if (updateError) throw updateError;
+      setLocalStream(stream);
+      setCallMode(call.call_type);
+      setActiveCall(call);
+      setIncomingCall(null);
+      setCallStatus("Connecting…");
+    } catch (reason) {
+      stream?.getTracks().forEach((track) => track.stop());
+      pcRef.current?.close(); pcRef.current = null; callIdRef.current = "";
+      setCallStatus("");
+      setError(reason instanceof Error ? reason.message : "Could not accept the call. Check camera and microphone permissions.");
+    }
+  }
+
+  async function rejectCall(call: CallSession) {
+    const { error: updateError } = await supabase.from("call_sessions")
+      .update({ status: "rejected", ended_at: new Date().toISOString() })
+      .eq("id", call.id).eq("receiver_id", userId);
+    if (updateError) setError(updateError.message);
+    setIncomingCall(null);
+  }
+
+  async function endCall() {
+    const callId = activeCall?.id;
+    if (callId) {
+      const { error: updateError } = await supabase.from("call_sessions")
+        .update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", callId);
+      if (updateError) setError(updateError.message);
+    }
+    resetCall();
+  }
+
+  function toggleMute() {
+    const next = !muted;
+    localStream?.getAudioTracks().forEach((track) => { track.enabled = !next; });
+    setMuted(next);
+  }
+
+  function toggleCamera() {
+    const next = !cameraOff;
+    localStream?.getVideoTracks().forEach((track) => { track.enabled = !next; });
+    setCameraOff(next);
+  }
+
   return (
     <main className="cx-shell">
       <aside className="cx-rail">
@@ -337,6 +618,12 @@ export default function ChatPreview() {
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
             <span className="avatar">{initials(activeName)}</span>
             <div className="person"><strong>{activeName}</strong><small>ConnectX friend</small></div>
+            <div className="call-actions">
+              <button className="call-icon" title="Audio call" aria-label="Start audio call"
+                disabled={!!activeCall || !!incomingCall} onClick={() => startCall("audio")}>☎</button>
+              <button className="call-icon" title="Video call" aria-label="Start video call"
+                disabled={!!activeCall || !!incomingCall} onClick={() => startCall("video")}>▣</button>
+            </div>
           </header>
           <div className="messages-area">
             <div className="today">DIRECT MESSAGES</div>
@@ -355,6 +642,46 @@ export default function ChatPreview() {
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
       </section>
+
+      {incomingCall && <div className="call-overlay">
+        <div className="incoming-card">
+          <div className="call-avatar">✦</div>
+          <h2>{incomingCall.call_type === "video" ? "Incoming video call" : "Incoming audio call"}</h2>
+          <p>{profiles.find((profile) => profile.id === incomingCall.caller_id)
+            ? displayName(profiles.find((profile) => profile.id === incomingCall.caller_id)!)
+            : "ConnectX friend"} is calling you</p>
+          <div className="incoming-actions">
+            <button className="decline-call" onClick={() => rejectCall(incomingCall)}>Decline</button>
+            <button className="accept-call" onClick={() => acceptCall(incomingCall)}>Accept</button>
+          </div>
+        </div>
+      </div>}
+
+      {activeCall && <div className="call-overlay">
+        <div className="active-call-card">
+          <div className="call-topline">
+            <strong>{activeCall.caller_id === userId
+              ? displayName(selectedFriend ?? { id: "", username: null, full_name: "ConnectX friend", avatar_url: null })
+              : (profiles.find((profile) => profile.id === activeCall.caller_id)
+                ? displayName(profiles.find((profile) => profile.id === activeCall.caller_id)!)
+                : "ConnectX friend")}</strong>
+            <span>{callStatus || "Connecting…"}</span>
+          </div>
+          {callMode === "video" ? <div className="video-stage">
+            <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
+            <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
+            {!remoteStream && <div className="video-placeholder">Waiting for the other person…</div>}
+          </div> : <div className="audio-stage">
+            <div className="call-avatar">✦</div><p>{callStatus || "Connecting audio…"}</p>
+            <audio ref={remoteAudioRef} autoPlay />
+          </div>}
+          <div className="call-controls">
+            <button className={muted ? "control-on" : ""} onClick={toggleMute}>{muted ? "Unmute" : "Mute"}</button>
+            {callMode === "video" && <button className={cameraOff ? "control-on" : ""} onClick={toggleCamera}>{cameraOff ? "Camera on" : "Camera off"}</button>}
+            <button className="hangup" onClick={endCall}>End call</button>
+          </div>
+        </div>
+      </div>}
 
       {(error || notice) && <div className={error ? "toast error-toast" : "toast"} role="status">
         <span>{error || notice}</span><button onClick={() => { setError(""); setNotice(""); }}>×</button>
@@ -389,6 +716,8 @@ export default function ChatPreview() {
         .today { align-self:center;padding:6px 12px;border-radius:20px;background:#182237;color:#8994ad;font-size:9px;letter-spacing:1px;margin-bottom:12px; }
         .message-line { display:flex;width:100%;justify-content:flex-start; }.message-line.mine { justify-content:flex-end; }.bubble { max-width:min(75%,440px);padding:11px 14px 8px;border-radius:16px 16px 16px 5px;background:#202b40; }.mine-bubble { background:#6858d8;border-radius:16px 16px 5px 16px; }.bubble p { margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.bubble small { display:block;text-align:right;color:#d2ccef;font-size:9px;margin-top:5px; }
         .composer { display:flex;align-items:center;gap:10px;padding:15px 20px;border-top:1px solid #232d42;background:#121a2b; }.composer input { padding:14px;border:1px solid #37425c;border-radius:12px;background:#0c1424;font-size:13px; }.send,.mini-btn,.action-btn { border:0;border-radius:10px;background:#7868eb;color:white;font-weight:700;cursor:pointer; }.send { width:42px;height:42px;flex-shrink:0;font-size:17px; }.send:disabled,.mini-btn:disabled { opacity:.4;cursor:not-allowed; }
+        .call-actions { display:flex;gap:8px;margin-left:auto; }.call-icon { width:36px;height:36px;border:1px solid #3b4560;border-radius:11px;background:#202a40;color:#d9d2ff;font-size:17px;cursor:pointer; }.call-icon:disabled { opacity:.4;cursor:not-allowed; }
+        .call-overlay { position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:18px;background:#050914dd;backdrop-filter:blur(8px); }.incoming-card,.active-call-card { width:min(100%,520px);border:1px solid #3a4562;border-radius:22px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;overflow:hidden; }.incoming-card { padding:34px 24px;text-align:center; }.call-avatar { width:82px;height:82px;margin:10px auto 20px;display:grid;place-items:center;border-radius:50%;background:#6257b5;color:white;font-size:36px; }.incoming-card h2 { margin:0;font-size:20px; }.incoming-card p { color:#9ca8c0;font-size:13px; }.incoming-actions,.call-controls { display:flex;justify-content:center;gap:12px;margin-top:26px; }.incoming-actions button,.call-controls button { padding:12px 18px;border:0;border-radius:12px;background:#303b53;color:#fff;font-weight:700; }.accept-call { background:#23875e!important; }.decline-call,.hangup { background:#b83c55!important; }.active-call-card { padding:18px; }.call-topline { display:flex;justify-content:space-between;gap:12px;align-items:center;padding:4px 4px 14px;font-size:13px; }.call-topline span { color:#9da9c0;font-size:11px; }.video-stage { position:relative;height:min(58vh,420px);min-height:230px;border-radius:15px;overflow:hidden;background:#070b14; }.remote-video { width:100%;height:100%;object-fit:cover; }.local-video { position:absolute;right:12px;bottom:12px;width:26%;max-height:35%;aspect-ratio:3/4;object-fit:cover;border:2px solid #fff;border-radius:12px;background:#202a40; }.video-placeholder { position:absolute;inset:0;display:grid;place-items:center;color:#aab5ca;font-size:12px;pointer-events:none; }.audio-stage { min-height:260px;display:grid;align-content:center;text-align:center;color:#aab5ca; }.audio-stage .call-avatar { margin-bottom:4px; }.audio-stage p { font-size:12px; }.call-controls { margin:18px 0 4px;flex-wrap:wrap; }.call-controls .control-on { background:#6557c7; }
         .back-btn { display:none;border:0;background:transparent;color:#c9bfff;font-size:28px; }.empty-state { margin:auto;color:#8490a9;text-align:center;padding:20px; }
         .section-caption { padding:14px 12px 7px;color:#77839c;font-size:9px;font-weight:800;letter-spacing:1.4px; }.request-caption { border-top:1px solid #263149;margin-top:12px; }
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
