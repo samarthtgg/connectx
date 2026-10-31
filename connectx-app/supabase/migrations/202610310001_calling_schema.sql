@@ -7,6 +7,7 @@ create table if not exists public.call_sessions (
   receiver_id uuid not null references public.profiles(id) on delete cascade,
   status text not null default 'ringing'
     check (status in ('ringing', 'accepted', 'rejected', 'ended', 'missed')),
+  call_type text not null default 'video' check (call_type in ('audio', 'video')),
   offer jsonb not null,
   answer jsonb,
   created_at timestamptz not null default now(),
