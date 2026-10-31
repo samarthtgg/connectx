@@ -210,17 +210,40 @@ export default function ChatPreview() {
     const content = draft.trim();
     if (!content || !selectedFriend || !userId || busy) return;
     setBusy(true); setError("");
-    const { data, error: insertError } = await supabase.from("messages")
-      .insert({ sender_id: userId, receiver_id: selectedFriend.id, content })
-      .select("id,sender_id,receiver_id,content,created_at")
-      .single();
-    if (insertError) {
-      setError(insertError.message);
-    } else if (data) {
-      setMessages((old) => old.some((item) => item.id === data.id) ? old : [...old, data as DirectMessage]);
-      setDraft("");
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!authData.user || authData.user.id !== userId) {
+        throw new Error("Your active sign-in session does not match the account loaded by ConnectX. Sign out and sign in again.");
+      }
+      const { data, error: insertError } = await supabase.from("messages")
+        .insert({ sender_id: authData.user.id, receiver_id: selectedFriend.id, content })
+        .select("id,sender_id,receiver_id,content,created_at")
+        .single();
+      if (insertError) {
+        console.error("ConnectX message insert failed", {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+          sender_id: authData.user.id,
+          receiver_id: selectedFriend.id,
+        });
+        setError([
+          insertError.message,
+          insertError.details,
+          insertError.hint,
+          insertError.code ? `Code: ${insertError.code}` : "",
+        ].filter(Boolean).join(" — "));
+      } else if (data) {
+        setMessages((old) => old.some((item) => item.id === data.id) ? old : [...old, data as DirectMessage]);
+        setDraft("");
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not send message.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function signOut() {
