@@ -137,8 +137,6 @@ export default function ChatPreview() {
     return () => { active = false; };
   }, [loadBase]);
 
-  useEffect(() => { if (userId) void loadChatPreferences().catch((e) => setError(e.message)); }, [userId, loadChatPreferences]);
-
   const acceptedIds = useMemo(() => {
     const ids = new Set<string>();
     for (const request of requests) {
@@ -173,6 +171,8 @@ export default function ChatPreview() {
     if (prefError) throw prefError;
     setChatPreferences((data ?? []) as ChatPreference[]);
   }, [userId]);
+
+  useEffect(() => { if (userId) void loadChatPreferences().catch((e) => setError(e.message)); }, [userId, loadChatPreferences]);
 
   const loadMessages = useCallback(async (friendId: string) => {
     if (!userId) return;
@@ -390,9 +390,9 @@ export default function ChatPreview() {
     if (!userId || !selectedFriend) return;
     const channel = supabase.channel(`chat-live-${userId}-${selectedFriend.id}`)
       .on("broadcast", { event: "typing" }, ({ payload }) => setTyping(!!payload?.typing))
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `receiver_id=eq.${userId}` }, (payload) => {
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
         const row = payload.new as DirectMessage;
-        if (row.sender_id === selectedFriend.id) setMessages((old) => old.map((m) => m.id === row.id ? { ...m, read_at: row.read_at } : m));
+        if (row.sender_id === userId && row.receiver_id === selectedFriend.id) setMessages((old) => old.map((m) => m.id === row.id ? { ...m, read_at: row.read_at } : m));
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (payload) => {
         const row = (payload.new ?? payload.old) as MessageReaction;
