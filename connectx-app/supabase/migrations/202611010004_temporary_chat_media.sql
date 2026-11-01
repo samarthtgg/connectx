@@ -48,5 +48,29 @@ with check (
   and (storage.foldername(name))[1] = (select auth.uid())::text
 );
 
--- No public SELECT policy is created. Reads use signed URLs from the app.
+
+drop policy if exists "ConnectX participants read temporary chat media" on storage.objects;
+create policy "ConnectX participants read temporary chat media"
+on storage.objects for select to authenticated
+using (
+  bucket_id = 'connectx-temporary-chat-media'
+  and (
+    (storage.foldername(name))[1] = (select auth.uid())::text
+    or exists (
+      select 1
+      from public.messages m
+      where m.media_path = storage.objects.name
+        and (m.sender_id = (select auth.uid()) or m.receiver_id = (select auth.uid()))
+    )
+    or exists (
+      select 1
+      from public.chat_group_messages gm
+      join public.chat_group_members gmemb on gmemb.group_id = gm.group_id
+      where gm.media_path = storage.objects.name
+        and gmemb.user_id = (select auth.uid())
+    )
+  )
+);
+
+-- No public access is granted. Reads use signed URLs from authorized conversation participants.
 -- Cleanup uses the Edge Function service-role client, never client-side DELETE.
