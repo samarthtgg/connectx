@@ -733,12 +733,12 @@ export default function ChatPreview() {
       <section className={`cx-list ${showMobileChat ? "hide-mobile" : ""}`}>
         <header className="list-head">
           <div><div className="cx-brand"><span>✦</span> ConnectX</div><p>Your space to connect</p></div>
-          <button className="icon-btn" aria-label="Refresh" onClick={() => loadBase(userId).catch((e) => setError(e.message))}>↻</button>
+          <button className="icon-btn header-profile" aria-label="Open settings" onClick={() => { setTab("Settings"); setShowMobileChat(false); }}>{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(myProfile?.full_name || myProfile?.username || "U")}</button>
         </header>
 
-        {tab !== "Settings" && <div className="search-box"><span>⌕</span>
+        {tab !== "Settings" && <div className="search-row"><div className="search-box"><span>⌕</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === "Friends" ? "Find people by name or username" : "Search friends"} /></div>}
+            placeholder={tab === "Friends" ? "Find people by name or username" : "Search friends"} /></div><button className="refresh-btn" onClick={() => loadBase(userId).catch((e) => setError(e.message))}><span>↻</span> Refresh</button></div>}
 
         <div className="list-label">{tab.toUpperCase()} <span>{tab === "Friends" ? filteredProfiles.length : tab === "Messages" ? friends.length : ""}</span></div>
 
@@ -770,7 +770,7 @@ export default function ChatPreview() {
               const label = relation?.status === "accepted" ? "Friends" :
                 relation?.status === "pending" ? (relation.sender_id === userId ? "Requested" : "Respond below") : "Add friend";
               return <div className="person-row" key={profile.id}>
-                <span className="avatar">{initials(displayName(profile))}</span>
+                {profile.avatar_url ? <img className="avatar" src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}
                 <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}</small></span>
                 <button className="mini-btn" disabled={busy || !!relation} onClick={() => sendRequest(profile)}>{label}</button>
               </div>;
@@ -794,17 +794,23 @@ export default function ChatPreview() {
                 onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
                 onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
                 onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } chooseFriend(friend); }}>
-                <span className="avatar">{initials(displayName(friend))}</span>
+                {friend.avatar_url ? <img className="avatar" src={friend.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(friend))}</span>}
                 <span className="chat-info"><strong>{displayName(friend)}</strong><small>{friend.username ? `@${friend.username}` : "Tap to open chat"}</small></span>
               </button>;
             })}
             {friends.length === 0 && <p className="empty">No friends yet. Open Friends to find people and send a request.</p>}
           </div>
         )}
-        <div className="profile-row"><span className="profile-avatar">{initials(myProfile?.full_name || myProfile?.username || "U")}</span>
+        <div className="profile-row">{myProfile?.avatar_url ? <img className="profile-avatar" src={myProfile.avatar_url} alt="" /> : <span className="profile-avatar">{initials(myProfile?.full_name || myProfile?.username || "U")}</span>}
           <span><strong>{myProfile ? displayName(myProfile) : "Your account"}</strong><small>Connected account</small></span><span className="online-dot">●</span></div>
       </section>
 
+      <nav className="mobile-nav" aria-label="Main navigation">
+        <button className={!selectedFriend && tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◆</span>Home</button>
+        <button className={selectedFriend && tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); if (selectedFriend) setShowMobileChat(true); else setShowMobileChat(false); }}><span>▢</span>Messages</button>
+        <button className={tab === "Friends" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Friends"); setShowMobileChat(false); }}><span>♧</span>Friends</button>
+        <button className={tab === "Settings" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Settings"); setShowMobileChat(false); }}><span>⚙</span>Settings</button>
+      </nav>
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
         {selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
@@ -922,6 +928,42 @@ export default function ChatPreview() {
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
         .request-row { display:flex;align-items:center;gap:7px;padding:10px 12px;color:#dce2f2;font-size:11px; }.request-row span { flex:1; }.settings-panel { padding:24px;text-align:center; }.large-avatar { width:76px;height:76px;margin:8px auto 14px;font-size:24px;border-radius:50%;display:grid;place-items:center;background:#29334b;color:#fff; }.profile-photo-wrap { display:flex;justify-content:center;margin:8px 0 18px; }.profile-photo { width:88px;height:88px;border-radius:50%;object-fit:cover;border:2px solid #56617b; }.profile-editor { text-align:left;display:flex;flex-direction:column;gap:10px; }.profile-field { display:flex;flex-direction:column;gap:6px;text-align:left;color:#cbd5e8;font-size:12px;font-weight:600; }.profile-field input,.profile-field textarea { width:100%;box-sizing:border-box;border:1px solid #35415a;border-radius:9px;background:#111a2b;color:#f3f6ff;padding:11px;font:inherit;font-weight:400; }.profile-field input[type=file] { font-size:11px; }.profile-field textarea { resize:vertical; }.profile-hint { color:#8290aa;font-size:10px;text-align:left;margin-top:-7px; }.privacy-heading { color:#9ca9c1;font-size:10px;letter-spacing:1px;text-align:left;margin-top:12px; }.privacy-option { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px;border:1px solid #303b53;border-radius:10px;text-align:left; }.privacy-option span { display:flex;flex-direction:column;gap:4px; }.privacy-option strong { color:#e9eefb;font-size:12px; }.privacy-option small { color:#8b96ad;font-size:10px; }.privacy-option input { accent-color:#8e80ff;width:18px;height:18px; }.action-btn { padding:12px 18px;margin-top:12px; }.toast { position:fixed;z-index:5;bottom:22px;left:50%;transform:translateX(-50%);max-width:min(92vw,560px);display:flex;gap:14px;align-items:center;padding:12px 15px;border:1px solid #3b4a65;border-radius:12px;background:#1b2940;color:#dce6ff;font-size:12px;box-shadow:0 10px 40px #0008; }.toast button { border:0;background:transparent;color:white;font-size:18px; }.error-toast { border-color:#8a4250;background:#3a202c;color:#ffd2d9; }
         @media(max-width:700px) { .cx-rail { width:54px; }.cx-list { width:calc(100% - 54px);min-width:0; }.cx-conversation { display:none; }.cx-conversation.show-mobile { display:flex;position:absolute;inset:0 0 0 54px;z-index:2; }.cx-list.hide-mobile { display:none; }.back-btn { display:block; }.conversation-head { padding:0 12px;gap:9px; }.composer { padding:12px; }.messages-area { padding:20px 14px; } }
+        .header-profile img { width:100%;height:100%;object-fit:cover;border-radius:50%; }
+        .search-row { display:flex;gap:12px;align-items:center;padding:0 20px 0 0; }.search-row .search-box { flex:1;margin:0 0 20px 17px; }
+        .refresh-btn { flex-shrink:0;margin-bottom:20px;padding:11px 17px;border:0;border-radius:28px;background:linear-gradient(135deg,#8068e8,#7654d7);color:#fff;font-size:13px;font-weight:700;cursor:pointer; }
+        .mobile-nav { display:none; }
+        @media(max-width:700px) {
+          .cx-shell { height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;color:#20134f;padding-bottom:env(safe-area-inset-bottom); }
+          .cx-rail { display:none; }
+          .cx-list { width:100%;min-width:0;min-height:0;flex:1;border:0;background:#fff;overflow-y:auto;padding-bottom:0; }
+          .list-head { padding:26px 28px 20px;min-height:132px; }
+          .cx-brand { color:#211052;font-size:28px;font-weight:900;letter-spacing:-1.2px; }.cx-brand span { color:#8062ed;font-size:35px;vertical-align:-2px;margin-right:5px; }
+          .list-head p { color:#81799f;font-size:16px;margin-top:4px; }
+          .header-profile { width:54px;height:54px;border:0;border-radius:50%;background:#8068e8;color:white;font-size:19px;box-shadow:0 0 0 8px #f1edff; }
+          .search-row { padding:0 28px 0 0;gap:12px; }.search-row .search-box { margin:0 0 0 28px;padding:15px 18px;height:58px;border-radius:25px;background:#f1efff;color:#766d9b; }
+          .search-box input { color:#34265e;font-size:15px; }.search-box input::placeholder { color:#777092; }
+          .refresh-btn { margin:0;height:58px;padding:0 18px;border-radius:30px;font-size:14px;white-space:nowrap; }.refresh-btn span { font-size:21px;margin-right:7px;vertical-align:-2px; }
+          .list-label { padding:0 28px 16px;margin-top:56px;color:#6d6590;font-size:13px;letter-spacing:2px; }
+          .cx-chats { flex:1;overflow:visible;padding:0 28px 22px; }
+          .chat-row { min-height:104px;padding:18px 20px;margin:0 0 12px;border-radius:24px;background:#f5f3ff;box-shadow:0 8px 26px #3b28700c;gap:18px; }
+          .chat-row.active,.chat-row.chat-selected { background:#eeeaff;outline:0; }
+          .avatar { width:68px;height:68px;border-radius:50%;background:#7659c7;font-size:19px;object-fit:cover; }
+          .chat-info { gap:6px; }.chat-info strong { color:#211052;font-size:17px;font-weight:800; }.chat-info small { color:#777092;font-size:14px; }
+          .chat-row::after { content:"›";display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:#eeebff;color:#5434bd;font-size:35px;font-weight:300; }
+          .profile-row { flex-shrink:0;margin:12px 28px 104px;padding:16px 20px;border:1px solid #f0edff;border-radius:23px;background:#f5f3ff;box-shadow:0 8px 24px #3b28700c;gap:16px; }
+          .profile-avatar { width:62px;height:62px;object-fit:cover;font-size:18px; }.profile-row strong { color:#211052;font-size:15px; }.profile-row small { color:#777092;font-size:13px; }.online-dot { color:#46bd9b;font-size:14px; }
+          .mobile-nav { position:fixed;z-index:10;left:22px;right:22px;bottom:calc(12px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:10px 8px;border-radius:30px;background:#fff;box-shadow:0 8px 35px #31205b20;border:1px solid #f4f1ff; }
+          .nav-item { min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:10px 2px;border:0;border-radius:21px;background:transparent;color:#716b91;font-size:12px;font-weight:600; }
+          .nav-item span { font-size:24px;line-height:1.1; }.nav-item.active { background:#eeeaff;color:#7354d7; }
+          .cx-conversation { display:none; }.cx-conversation.show-mobile { display:flex;position:fixed;inset:0;z-index:12;background:#fff;color:#211052;padding-bottom:env(safe-area-inset-bottom); }
+          .cx-list.hide-mobile { display:none; }.back-btn { display:block;border:0;background:transparent;color:#6b50cb;font-size:30px; }
+          .conversation-head { padding:0 14px;gap:9px;background:#fff;border-bottom:1px solid #eeeaff;color:#211052; }.person small { color:#43b88e; }
+          .messages-area { padding:20px 14px;background:#fff; }.today { background:#f1efff;color:#756b9b; }
+          .bubble { background:#f0edff;color:#241653; }.mine-bubble { background:#7659dc;color:#fff; }
+          .composer { padding:12px;background:#fff;border-top:1px solid #eeeaff; }.composer input { background:#f4f2ff;color:#241653;border:1px solid #e7e1ff; }
+          .settings-panel { padding:16px 28px 30px; }.profile-field { color:#514774; }.profile-field input,.profile-field textarea { background:#fff;color:#241653;border-color:#ded9ef; }.privacy-option { border-color:#e8e3f5; }.privacy-option strong { color:#241653; }.privacy-option small { color:#777092; }
+          .empty-state { color:#777092; }
+        }
       `}</style>
     </main>
   );
