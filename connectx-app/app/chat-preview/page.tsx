@@ -43,7 +43,9 @@ type DirectMessage = {
   content: string;
   created_at: string;
   read_at?: string | null;
+  message_type?: "text" | "voice";
 };
+type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null };
 
@@ -78,7 +80,16 @@ export default function ChatPreview() {
   const typingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
-  const [tab, setTab] = useState<"Messages" | "Friends" | "Settings">("Messages");
+  const [tab, setTab] = useState<"Messages" | "Friends" | "Settings" | "Status">("Messages");
+  const [statuses,setStatuses]=useState<StatusUpdate[]>([]);
+  const [statusCaption,setStatusCaption]=useState("");
+  const [statusFile,setStatusFile]=useState<File|null>(null);
+  const [recording,setRecording]=useState(false);
+  const [voiceBlob,setVoiceBlob]=useState<Blob|null>(null);
+  const [voicePreview,setVoicePreview]=useState("");
+  const recorderRef=useRef<MediaRecorder|null>(null);
+  const chunksRef=useRef<Blob[]>([]);
+  const statusInputRef=useRef<HTMLInputElement|null>(null);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -194,7 +205,7 @@ export default function ChatPreview() {
   const loadMessages = useCallback(async (friendId: string) => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
-      .select("id,sender_id,receiver_id,content,created_at,read_at")
+      .select("id,sender_id,receiver_id,content,created_at,read_at,message_type")
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (messageError) throw messageError;
@@ -353,6 +364,67 @@ export default function ChatPreview() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save reaction."); }
   }
 
+  const loadStatuses=useCallback(async()=>{
+    if(!userId)return;
+    const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false});
+    if(error)throw error; setStatuses((data??[]) as StatusUpdate[]);
+  },[userId]);
+  useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);
+
+  async function publishStatus(event:FormEvent<HTMLFormElement>){
+    event.preventDefault(); if(!userId||(!statusCaption.trim()&&!statusFile))return;
+    setBusy(true);setError("");
+    try{
+      let mediaUrl:string|null=null; let mediaType:"text"|"image"|"video"="text";
+      if(statusFile){
+        if(statusFile.size>5*1024*1024)throw new Error("Status media must be 5 MB or smaller.");
+        if(statusFile.type.startsWith("image/"))mediaType="image";
+        else if(statusFile.type==="video/mp4")mediaType="video";
+        else throw new Error("Choose a JPG, PNG, WebP image or MP4 video.");
+        if(mediaType==="video" && !statusFile.type.startsWith("video/"))throw new Error("Choose an MP4 video.");
+        const ext=statusFile.name.split(".").pop()||"bin";
+        const key=userId+"/"+crypto.randomUUID()+"."+ext;
+        const {error:uploadError}=await supabase.storage.from("connectx-status-media").upload(key,statusFile,{contentType:statusFile.type});
+        if(uploadError)throw uploadError;
+        mediaUrl=supabase.storage.from("connectx-status-media").getPublicUrl(key).data.publicUrl;
+      }
+      const {error:saveError}=await supabase.from("status_updates").insert({user_id:userId,caption:statusCaption.trim()||null,media_url:mediaUrl,media_type:mediaType});
+      if(saveError)throw saveError;
+      setStatusCaption("");setStatusFile(null);if(statusInputRef.current)statusInputRef.current.value="";
+      await loadStatuses();setNotice("Status shared for 24 hours.");
+    }catch(e){setError(e instanceof Error?e.message:"Could not publish status.");}
+    finally{setBusy(false);}
+  }
+
+  async function startVoiceRecording(){
+    try{
+      if(!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder==="undefined")throw new Error("Voice recording is not supported by this browser.");
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const mime=["audio/webm;codecs=opus","audio/mp4","audio/webm"].find(type=>MediaRecorder.isTypeSupported(type));
+      const recorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
+      chunksRef.current=[];
+      recorder.ondataavailable=e=>{if(e.data.size)chunksRef.current.push(e.data);};
+      recorder.onstop=()=>{const blob=new Blob(chunksRef.current,{type:recorder.mimeType||"audio/webm"});setVoiceBlob(blob);setVoicePreview(URL.createObjectURL(blob));stream.getTracks().forEach(t=>t.stop());};
+      recorderRef.current=recorder;recorder.start();setRecording(true);
+    }catch(e){setError(e instanceof Error?e.message:"Microphone access failed.");}
+  }
+  function stopVoiceRecording(){if(recorderRef.current?.state==="recording"){recorderRef.current.stop();setRecording(false);}}
+  async function sendVoiceMessage(){
+    if(!voiceBlob||!userId||!selectedFriend||busy)return;
+    setBusy(true);setError("");
+    try{
+      const ext=voiceBlob.type.includes("mp4")?"m4a":"webm";
+      const key=userId+"/"+crypto.randomUUID()+"."+ext;
+      const {error:uploadError}=await supabase.storage.from("connectx-voice-notes").upload(key,voiceBlob,{contentType:voiceBlob.type});
+      if(uploadError)throw uploadError;
+      const url=supabase.storage.from("connectx-voice-notes").getPublicUrl(key).data.publicUrl;
+      const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice"}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type").single();
+      if(insertError)throw insertError;
+      setMessages(old=>[...old,data as DirectMessage]);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");
+    }catch(e){setError(e instanceof Error?e.message:"Could not send voice message.");}
+    finally{setBusy(false);}
+  }
+
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
@@ -365,8 +437,8 @@ export default function ChatPreview() {
         throw new Error("Your active sign-in session does not match the account loaded by ConnectX. Sign out and sign in again.");
       }
       const { data, error: insertError } = await supabase.from("messages")
-        .insert({ sender_id: authData.user.id, receiver_id: selectedFriend.id, content })
-        .select("id,sender_id,receiver_id,content,created_at,read_at")
+        .insert({ sender_id: authData.user.id, receiver_id: selectedFriend.id, content, message_type: "text" })
+        .select("id,sender_id,receiver_id,content,created_at,read_at,message_type")
         .single();
       if (insertError) {
         console.error("ConnectX message insert failed", {
@@ -721,10 +793,10 @@ export default function ChatPreview() {
     <main className="cx-shell">
       <aside className="cx-rail">
         <div className="cx-mark">✦</div>
-        {(["Messages", "Friends", "Settings"] as const).map((item, index) => (
+        {(["Messages", "Status", "Friends", "Settings"] as const).map((item, index) => (
           <button key={item} className={tab === item ? "rail-btn selected" : "rail-btn"}
             onClick={() => { setTab(item); setShowMobileChat(false); }} aria-label={item}>
-            {["▤", "♙", "⚙"][index]}
+            {["▤", "◉", "♙", "⚙"][index]}
           </button>
         ))}
         <div className="rail-spacer" /><div className="cx-user">{initials(myProfile?.full_name || myProfile?.username || "U")}</div>
@@ -759,6 +831,18 @@ export default function ChatPreview() {
             <button className="action-btn" type="submit" disabled={savingProfile}>{savingProfile ? "Saving…" : "Save profile"}</button>
             <button className="action-btn secondary" type="button" onClick={signOut} disabled={busy || savingProfile}>Sign out</button>
           </form>
+        ) : tab === "Status" ? (
+          <div className="cx-chats status-panel">
+            <form className="status-compose" onSubmit={publishStatus}>
+              <textarea value={statusCaption} onChange={e=>setStatusCaption(e.target.value)} maxLength={700} placeholder="What’s happening? Share a status…" />
+              <label className="status-file">Add photo or video<input ref={statusInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={e=>setStatusFile(e.target.files?.[0]??null)} /></label>
+              {statusFile && <small>{statusFile.name} · {(statusFile.size/1024/1024).toFixed(1)} MB</small>}
+              <button className="action-btn" disabled={busy||(!statusCaption.trim()&&!statusFile)}>{busy?"Sharing…":"Share status"}</button>
+            </form>
+            <div className="section-caption">RECENT STATUS · EXPIRES AFTER 24 HOURS</div>
+            {statuses.map(status=><article className="status-card" key={status.id}><strong>{status.user_id===userId?"Your status":displayName(profiles.find(p=>p.id===status.user_id)??{id:"",username:null,full_name:"ConnectX friend",avatar_url:null})}</strong><small>{new Date(status.created_at).toLocaleString()}</small>{status.media_url && (status.media_type==="video"?<video controls playsInline src={status.media_url}/>:<img src={status.media_url} alt="Status media"/>)}{status.caption&&<p>{status.caption}</p>}</article>)}
+            {statuses.length===0&&<p className="empty">No active statuses yet. Share the first one.</p>}
+          </div>
         ) : tab === "Friends" ? (
           <div className="cx-chats">
             <div className="section-caption">PEOPLE</div>
@@ -804,8 +888,8 @@ export default function ChatPreview() {
       </section>
 
       <nav className="mobile-nav" aria-label="Main navigation">
-        <button className={!selectedFriend && tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◆</span>Home</button>
-        <button className={selectedFriend && tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); if (selectedFriend) setShowMobileChat(true); else setShowMobileChat(false); }}><span>▢</span>Messages</button>
+        <button className={tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◆</span>Home</button>
+        <button className={tab === "Status" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Status"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◉</span>Status</button>
         <button className={tab === "Friends" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Friends"); setShowMobileChat(false); }}><span>♧</span>Friends</button>
         <button className={tab === "Settings" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Settings"); setShowMobileChat(false); }}><span>⚙</span>Settings</button>
       </nav>
@@ -828,7 +912,7 @@ export default function ChatPreview() {
             {messages.map((message) => {
               const mine = message.sender_id === userId;
               return <div key={message.id} className={mine ? "message-line mine" : "message-line"}>
-                <div className={mine ? "bubble mine-bubble" : "bubble"}><p>{message.content}</p>
+                <div className={mine ? "bubble mine-bubble" : "bubble"}>{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : <p>{message.content}</p>}
                   <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
                   {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
@@ -839,7 +923,10 @@ export default function ChatPreview() {
             {messages.length === 0 && <p className="empty">No messages yet. Say hello!</p>}
           </div>
           <form className="composer" onSubmit={sendMessage}>
+            <button type="button" className="mic-btn" disabled={busy||!!voiceBlob} onClick={recording?stopVoiceRecording:startVoiceRecording} aria-label={recording?"Stop recording":"Record voice message"}>{recording?"■":"🎙"}</button>
             <input value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); }} placeholder="Write a message…" maxLength={5000} />
+            {recording && <span className="recording-label">Recording…</span>}
+            {voiceBlob && <div className="voice-preview"><audio controls src={voicePreview} /><button type="button" onClick={()=>{setVoiceBlob(null);URL.revokeObjectURL(voicePreview);setVoicePreview("");}}>×</button><button type="button" disabled={busy} onClick={sendVoiceMessage}>Send voice</button></div>}
             <button className="send" disabled={!draft.trim() || busy} aria-label="Send message">{busy ? "…" : "➤"}</button>
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
@@ -961,6 +1048,13 @@ export default function ChatPreview() {
           .composer { padding:12px;background:#fff;border-top:1px solid #eeeaff; }.composer input { background:#f4f2ff;color:#241653;border:1px solid #e7e1ff; }
           .settings-panel { padding:16px 28px 30px; }.profile-field { color:#514774; }.profile-field input,.profile-field textarea { background:#fff;color:#241653;border-color:#ded9ef; }.privacy-option { border-color:#e8e3f5; }.privacy-option strong { color:#241653; }.privacy-option small { color:#777092; }
           .empty-state { color:#777092; }
+          .status-compose { margin:0 4px 12px; }.status-card { margin:10px 4px; }
+          .composer { position:relative;flex-wrap:wrap; }.voice-preview { bottom:calc(100% + 6px); }.recording-label { font-size:10px; }
+          .mic-btn { flex:0 0 40px;height:40px;border:0;border-radius:50%;background:#eeeaff;color:#654bc0;font-size:18px; }
+          .voice-player { width:min(230px,65vw);height:36px; }
+          .voice-preview { display:flex;align-items:center;gap:6px;position:absolute;bottom:72px;left:12px;right:12px;padding:8px;border-radius:12px;background:#f3f0ff; }
+          .recording-label { color:#c64d65;font-size:11px;white-space:nowrap; }
+          .status-panel { overflow-y:auto; }.status-compose { display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid #eeeaff;border-radius:16px;background:#faf9ff; }.status-compose textarea { min-height:82px;padding:12px;border:1px solid #e5e0f5;border-radius:12px;resize:vertical;color:#241653;background:white; }.status-file { font-size:12px;color:#6855b5; }.status-file input { display:block;margin-top:7px;max-width:100%;font-size:11px; }.status-card { display:flex;flex-direction:column;gap:7px;padding:14px;margin:10px 0;border-radius:14px;background:#f6f3ff;color:#30245a; }.status-card small { color:#81799f;font-size:11px; }.status-card img,.status-card video { width:100%;max-height:320px;object-fit:contain;border-radius:10px;background:#16121f; }.status-card p { margin:0;font-size:13px; }
         }
       `}</style>
     </main>
