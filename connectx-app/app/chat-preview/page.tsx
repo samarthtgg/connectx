@@ -50,6 +50,7 @@ type MessageReaction = { id: string; message_id: string; user_id: string; emoji:
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null };
 type ChatGroup = { id: string; name: string; description: string | null; created_by: string; created_at: string };
 type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean };
+type GroupMember = { user_id: string; role: "admin" | "member"; joined_at: string; profile: Profile | null };
 
 const displayName = (profile: Profile) =>
   profile.full_name?.trim() || profile.username || "ConnectX user";
@@ -84,6 +85,12 @@ export default function ChatPreview() {
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<ChatGroup | null>(null);
+  const [showGroupProfile, setShowGroupProfile] = useState(false);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [groupProfileTab, setGroupProfileTab] = useState<"Members" | "Media" | "Settings">("Members");
+  const [groupMemberSearch, setGroupMemberSearch] = useState("");
+  const [groupEditName, setGroupEditName] = useState("");
+  const [groupEditDescription, setGroupEditDescription] = useState("");
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [groupDraft, setGroupDraft] = useState("");
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -257,6 +264,32 @@ export default function ChatPreview() {
     if (error) { setError(error.message); return; }
     setGroupMessages((data ?? []) as GroupMessage[]);
   }
+  async function openGroupProfile() {
+    if (!selectedGroup) return;
+    setGroupProfileTab("Members"); setGroupMemberSearch("");
+    setGroupEditName(selectedGroup.name); setGroupEditDescription(selectedGroup.description ?? "");
+    setShowGroupProfile(true);
+    const { data: rows, error: memberError } = await supabase.from("chat_group_members").select("user_id,role,joined_at").eq("group_id", selectedGroup.id).order("joined_at", { ascending: true });
+    if (memberError) { setError(memberError.message); return; }
+    const ids = (rows ?? []).map(row => row.user_id as string);
+    const { data: people, error: peopleError } = ids.length ? await supabase.from("profiles").select("id,username,full_name,avatar_url").in("id", ids) : { data: [], error: null };
+    if (peopleError) { setError(peopleError.message); return; }
+    const byId = new Map((people ?? []).map(p => [p.id, p as Profile]));
+    setGroupMembers((rows ?? []).map(row => ({ user_id: row.user_id, role: row.role, joined_at: row.joined_at, profile: byId.get(row.user_id) ?? null })) as GroupMember[]);
+  }
+
+  async function saveGroupDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedGroup || selectedGroup.created_by !== userId) return;
+    const name = groupEditName.trim();
+    if (!name) { setError("Group name cannot be empty."); return; }
+    setBusy(true); setError("");
+    const { data, error } = await supabase.from("chat_groups").update({ name, description: groupEditDescription.trim() || null }).eq("id", selectedGroup.id).select("id,name,description,created_by,created_at").single();
+    if (error) setError(error.message);
+    else { setSelectedGroup(data as ChatGroup); setGroups(old => old.map(g => g.id === data.id ? data as ChatGroup : g)); setNotice("Group details updated."); }
+    setBusy(false);
+  }
+
   async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = groupDraft.trim();
@@ -1038,7 +1071,7 @@ export default function ChatPreview() {
       </nav>
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
         {selectedGroup && tab === "Messages" ? <>
-          <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><span className="avatar">♧</span><div className="person"><strong>{selectedGroup.name}</strong><small>Group conversation</small></div></header>
+          <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><button type="button" className="group-head-profile" onClick={() => void openGroupProfile()}><span className="avatar">♧</span><span className="person"><strong>{selectedGroup.name}</strong><small>Group · Tap for info</small></span></button><button type="button" className="call-icon" onClick={() => void openGroupProfile()} aria-label="Group info">ⓘ</button></header>
           <div className="messages-area"><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}><p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
           <form className="composer" onSubmit={sendGroupMessage}><input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} placeholder="Message the group…" maxLength={5000} /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
         </> : selectedFriend && tab === "Messages" ? <>
@@ -1119,6 +1152,15 @@ export default function ChatPreview() {
         </div>
       </div>}
 
+      {showGroupProfile && selectedGroup && <div className="group-profile-screen">
+        <div className="group-profile-top"><button type="button" onClick={() => setShowGroupProfile(false)}>‹</button><span>Group info</span><button type="button" onClick={() => setShowGroupProfile(false)}>×</button></div>
+        <div className="group-profile-hero"><div className="group-profile-photo">♧</div><h2>{selectedGroup.name}</h2><p>Group · {groupMembers.length} members</p>{selectedGroup.description && <small>{selectedGroup.description}</small>}</div>
+        <div className="group-profile-actions"><button type="button" onClick={() => setError("Group calling is not available yet.")}>▣<small>Call</small></button><button type="button" onClick={() => setError("Group status is not available yet.")}>◉<small>Status</small></button><button type="button" onClick={() => { setGroupProfileTab("Members"); document.getElementById("group-member-search")?.focus(); }}>⌕<small>Search</small></button></div>
+        <div className="group-profile-tabs">{(["Members","Media","Settings"] as const).map(item => <button type="button" className={groupProfileTab===item?"active":""} key={item} onClick={() => setGroupProfileTab(item)}>{item}</button>)}</div>
+        {groupProfileTab==="Members" && <div className="group-profile-content"><div className="group-member-count">{groupMembers.length} members</div><input id="group-member-search" className="group-member-search" value={groupMemberSearch} onChange={e=>setGroupMemberSearch(e.target.value)} placeholder="Search members" />{groupMembers.filter(m=>(m.profile?displayName(m.profile):"ConnectX user").toLowerCase().includes(groupMemberSearch.toLowerCase())).map(member=><div className="group-member-row" key={member.user_id}><span className="group-member-avatar">{member.profile?.avatar_url?<img src={member.profile.avatar_url} alt="" />:initials(member.profile?displayName(member.profile):"U")}</span><span><strong>{member.user_id===userId?"You":member.profile?displayName(member.profile):"ConnectX user"}</strong><small>{member.user_id===selectedGroup.created_by?"Group creator":member.role==="admin"?"Group admin":"Member"}</small></span>{member.role==="admin"&&<em>Admin</em>}</div>)}</div>}
+        {groupProfileTab==="Media" && <div className="group-profile-content"><div className="group-member-count">Shared media</div><p className="group-profile-empty">No shared photos or videos yet.</p></div>}
+        {groupProfileTab==="Settings" && <div className="group-profile-content">{selectedGroup.created_by===userId?<form className="group-settings-form" onSubmit={saveGroupDetails}><label>Group name<input value={groupEditName} onChange={e=>setGroupEditName(e.target.value)} maxLength={60} required /></label><label>Description<textarea value={groupEditDescription} onChange={e=>setGroupEditDescription(e.target.value)} maxLength={300} /></label><button disabled={busy}>{busy?"Saving…":"Save changes"}</button></form>:<p className="group-profile-empty">Only the group creator can edit group details.</p>}</div>}
+      </div>}
       {(error || notice) && <div className={error ? "toast error-toast" : "toast"} role="status">
         <span>{error || notice}</span><button onClick={() => { setError(""); setNotice(""); }}>×</button>
       </div>}
@@ -1156,6 +1198,7 @@ export default function ChatPreview() {
         .call-overlay { position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:18px;background:#050914dd;backdrop-filter:blur(8px); }.incoming-card,.active-call-card { width:min(100%,520px);border:1px solid #3a4562;border-radius:22px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;overflow:hidden; }.incoming-card { padding:34px 24px;text-align:center; }.call-avatar { width:82px;height:82px;margin:10px auto 20px;display:grid;place-items:center;border-radius:50%;background:#6257b5;color:white;font-size:36px; }.incoming-card h2 { margin:0;font-size:20px; }.incoming-card p { color:#9ca8c0;font-size:13px; }.incoming-actions,.call-controls { display:flex;justify-content:center;gap:12px;margin-top:26px; }.incoming-actions button,.call-controls button { padding:12px 18px;border:0;border-radius:12px;background:#303b53;color:#fff;font-weight:700; }.accept-call { background:#23875e!important; }.decline-call,.hangup { background:#b83c55!important; }.active-call-card { padding:18px; }.call-topline { display:flex;justify-content:space-between;gap:12px;align-items:center;padding:4px 4px 14px;font-size:13px; }.call-topline span { color:#9da9c0;font-size:11px; }.video-stage { position:relative;height:min(58vh,420px);min-height:230px;border-radius:15px;overflow:hidden;background:#070b14; }.remote-video { width:100%;height:100%;object-fit:cover; }.local-video { position:absolute;right:12px;bottom:12px;width:26%;max-height:35%;aspect-ratio:3/4;object-fit:cover;border:2px solid #fff;border-radius:12px;background:#202a40; }.video-placeholder { position:absolute;inset:0;display:grid;place-items:center;color:#aab5ca;font-size:12px;pointer-events:none; }.audio-stage { min-height:260px;display:grid;align-content:center;text-align:center;color:#aab5ca; }.audio-stage .call-avatar { margin-bottom:4px; }.audio-stage p { font-size:12px; }.call-controls { margin:18px 0 4px;flex-wrap:wrap; }.call-controls .control-on { background:#6557c7; }
         .read-ticks { color:#54b9ff;font-weight:900;letter-spacing:-3px;padding-right:3px; }.reaction-chip { margin:6px 4px 0 0;padding:4px 7px;border:1px solid #56617b;border-radius:12px;background:#27344d;color:white;font-size:11px; }.reaction-picker { display:flex;gap:4px;margin-top:7px;padding:5px;background:#101a2c;border:1px solid #45516d;border-radius:20px;width:max-content; }.reaction-picker button,.react-trigger { border:0;background:transparent;color:white;font-size:17px;cursor:pointer; }.react-trigger { display:block;margin-left:auto;font-size:13px;color:#b8c3d9; }.typing-indicator { align-self:flex-start;color:#aeb9d0;font-size:11px;display:flex;align-items:center;gap:4px; }.typing-indicator span { width:5px;height:5px;border-radius:50%;background:#a99aff;animation:typingPulse .8s infinite alternate; }.typing-indicator span:nth-child(2) { animation-delay:.2s; }.typing-indicator span:nth-child(3) { animation-delay:.4s; } @keyframes typingPulse { to { opacity:.25;transform:translateY(-3px); } }.bulk-actions { display:flex;align-items:center;gap:6px;padding:8px;position:sticky;top:0;background:#121a2b;z-index:2; }.bulk-actions strong { flex:1;font-size:11px; }.bulk-actions button { border:1px solid #46516b;border-radius:8px;padding:6px;background:#202a40;color:#fff;font-size:10px; }.chat-row.chat-selected { outline:2px solid #8e80ff;background:#28264a; }
         .back-btn { display:none;border:0;background:transparent;color:#c9bfff;font-size:28px; }.empty-state { margin:auto;color:#8490a9;text-align:center;padding:20px; }
+        .group-head-profile { display:flex;align-items:center;gap:10px;flex:1;min-width:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer; }.group-profile-screen { position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;overflow-y:auto;background:#0b0f12;color:#f5f6f8; }.group-profile-top { display:flex;align-items:center;justify-content:space-between;padding:18px 22px;font-size:16px; }.group-profile-top button { border:0;background:transparent;color:inherit;font-size:28px; }.group-profile-hero { display:flex;align-items:center;flex-direction:column;padding:22px 20px 24px;text-align:center; }.group-profile-photo { display:grid;place-items:center;width:132px;height:132px;border-radius:50%;background:#29233f;color:#b8a5ff;font-size:54px; }.group-profile-hero h2 { margin:24px 0 5px;font-size:25px;font-weight:500; }.group-profile-hero p { margin:0;color:#9da2a7;font-size:14px; }.group-profile-hero small { margin-top:12px;color:#aeb3b8; }.group-profile-actions { display:flex;justify-content:center;gap:26px;padding:12px 10px 24px;border-bottom:1px solid #252a2e; }.group-profile-actions button { display:flex;align-items:center;flex-direction:column;gap:7px;width:76px;height:76px;justify-content:center;border:0;border-radius:50%;background:#20262a;color:#f3f5f6;font-size:25px; }.group-profile-actions small { font-size:12px; }.group-profile-tabs { display:flex;justify-content:space-around;border-bottom:1px solid #252a2e; }.group-profile-tabs button { padding:17px 10px 13px;border:0;border-bottom:3px solid transparent;background:transparent;color:#a3a8ad;font-size:14px; }.group-profile-tabs button.active { border-color:#26bd78;color:#fff; }.group-profile-content { padding:20px 22px 40px;overflow-y:auto; }.group-member-count { margin-bottom:14px;color:#a7adb2;font-size:14px; }.group-member-search { width:100%;margin-bottom:12px;padding:12px 14px;border:1px solid #333b40;border-radius:12px;background:#171d20;color:#fff;font-size:14px; }.group-member-row { display:flex;align-items:center;gap:13px;padding:12px 0; }.group-member-avatar { display:grid;place-items:center;width:48px;height:48px;flex:0 0 48px;overflow:hidden;border-radius:50%;background:#273c3b;color:#c6d4d0; }.group-member-avatar img { width:100%;height:100%;object-fit:cover; }.group-member-row span:nth-child(2) { display:flex;flex:1;flex-direction:column;gap:4px;min-width:0; }.group-member-row strong { font-size:15px;font-weight:500; }.group-member-row small { color:#a0a6ab;font-size:12px; }.group-member-row em { padding:5px 9px;border-radius:8px;background:#123d2e;color:#a8e5c5;font-size:11px;font-style:normal; }.group-profile-empty { padding:28px 8px;text-align:center;color:#92999f;font-size:13px; }.group-settings-form { display:flex;flex-direction:column;gap:15px; }.group-settings-form label { display:flex;flex-direction:column;gap:7px;color:#b9c0c5;font-size:13px; }.group-settings-form input,.group-settings-form textarea { padding:12px;border:1px solid #343c41;border-radius:10px;background:#171d20;color:white;font:inherit; }.group-settings-form button { padding:12px;border:0;border-radius:10px;background:#7659dc;color:white;font-weight:700; }
         .groups-heading { display:flex;align-items:center;justify-content:space-between;padding:16px 12px 8px;color:#817b91;font-size:11px;font-weight:700;letter-spacing:1px; }.group-row { display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;margin-bottom:7px;border:1px solid #eeeaff;border-radius:13px;background:#faf9ff;color:#30245a;text-align:left; }.group-avatar { display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:#eeeaff;color:#7659dc;font-size:20px; }.group-empty { padding:4px 12px 12px;color:#918aa4;font-size:11px; }
         .section-caption { padding:14px 12px 7px;color:#77839c;font-size:9px;font-weight:800;letter-spacing:1.4px; }.request-caption { border-top:1px solid #263149;margin-top:12px; }
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
