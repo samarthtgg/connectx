@@ -161,3 +161,12 @@ create policy "Users can send messages" on public.messages
   );
 
 alter publication supabase_realtime add table public.chat_group_messages;
+
+-- Message authors can edit their own messages or soft-delete them for everyone.
+drop policy if exists "ConnectX authors edit direct messages" on public.messages;
+create policy "ConnectX authors edit direct messages" on public.messages
+  for update to authenticated using (sender_id = (select auth.uid()))
+  with check (sender_id = (select auth.uid()));
+drop policy if exists "ConnectX authors delete direct messages" on public.messages;
+create policy "ConnectX authors delete direct messages" on public.messages
+  for delete to authenticated using (sender_id = (select auth.uid()));
