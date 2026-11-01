@@ -894,7 +894,7 @@ export default function ChatPreview() {
         .rail-btn.selected { background:#29264a;color:#c8beff; }
         .rail-spacer { flex:1; }.cx-user,.profile-avatar,.large-avatar { display:grid;place-items:center;border-radius:50%;background:#554b9b;font-weight:800; }
         .cx-user { width:36px;height:36px;font-size:11px; }
-        .cx-list { width:360px;min-width:300px;display:flex;flex-direction:column;background:#121a2b;border-right:1px solid #232d42; }
+        .cx-list { width:360px;min-width:300px;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#121a2b;border-right:1px solid #232d42; }.list-head { flex-shrink:0; }.list-label { flex-shrink:0; }.profile-editor { padding-bottom:calc(32px + env(safe-area-inset-bottom)); }
         .list-head { padding:24px 20px 18px;display:flex;align-items:center;justify-content:space-between; }
         .cx-brand { font-size:22px;font-weight:850;letter-spacing:-.8px; }.cx-brand span { color:#a99aff; }
         .list-head p { margin:5px 0 0;color:#8490a9;font-size:12px; }
