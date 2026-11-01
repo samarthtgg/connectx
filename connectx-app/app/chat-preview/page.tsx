@@ -48,6 +48,8 @@ type DirectMessage = {
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null };
+type ChatGroup = { id: string; name: string; description: string | null; created_by: string; created_at: string };
+type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean };
 
 const displayName = (profile: Profile) =>
   profile.full_name?.trim() || profile.username || "ConnectX user";
@@ -80,6 +82,14 @@ export default function ChatPreview() {
   const typingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
+  const [groups, setGroups] = useState<ChatGroup[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<ChatGroup | null>(null);
+  const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
+  const [groupDraft, setGroupDraft] = useState("");
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDescription, setNewGroupDescription] = useState("");
+  const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
   const [tab, setTab] = useState<"Messages" | "Friends" | "Settings" | "Status">("Messages");
   const [statuses,setStatuses]=useState<StatusUpdate[]>([]);
   const [statusCaption,setStatusCaption]=useState("");
@@ -206,6 +216,68 @@ export default function ChatPreview() {
       return !q || name.includes(q) || username.includes(q);
     });
   }, [profiles, search]);
+
+
+  const loadGroups = useCallback(async () => {
+    if (!userId) return;
+    const { data: memberships, error: membershipError } = await supabase.from("chat_group_members").select("group_id").eq("user_id", userId);
+    if (membershipError) throw membershipError;
+    const ids = (memberships ?? []).map((row) => row.group_id as string);
+    if (!ids.length) { setGroups([]); return; }
+    const { data, error } = await supabase.from("chat_groups").select("id,name,description,created_by,created_at").in("id", ids).order("created_at", { ascending: false });
+    if (error) throw error;
+    setGroups((data ?? []) as ChatGroup[]);
+  }, [userId]);
+  useEffect(() => { if (userId) void loadGroups().catch((e) => setError(e.message)); }, [userId, loadGroups]);
+
+  async function createGroup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newGroupName.trim();
+    if (!userId || !name || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const { data: group, error } = await supabase.from("chat_groups").insert({ name, description: newGroupDescription.trim() || null, created_by: userId }).select("id,name,description,created_by,created_at").single();
+      if (error) throw error;
+      const { error: ownerError } = await supabase.from("chat_group_members").insert({ group_id: group.id, user_id: userId, role: "admin" });
+      if (ownerError) throw ownerError;
+      if (selectedGroupMembers.length) {
+        const { error: memberError } = await supabase.from("chat_group_members").insert(selectedGroupMembers.map((id) => ({ group_id: group.id, user_id: id, role: "member" })));
+        if (memberError) throw memberError;
+      }
+      setGroups((old) => [group as ChatGroup, ...old]); setSelectedGroup(group as ChatGroup); setSelectedFriend(null);
+      setShowMobileChat(true); setTab("Messages"); setShowCreateGroup(false);
+      setNewGroupName(""); setNewGroupDescription(""); setSelectedGroupMembers([]);
+      setNotice("Group created. Start the conversation!");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not create group."); }
+    finally { setBusy(false); }
+  }
+  async function openGroup(group: ChatGroup) {
+    setSelectedGroup(group); setSelectedFriend(null); setShowMobileChat(true); setTab("Messages"); setError("");
+    const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone").eq("group_id", group.id).order("created_at", { ascending: true });
+    if (error) { setError(error.message); return; }
+    setGroupMessages((data ?? []) as GroupMessage[]);
+  }
+  async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const content = groupDraft.trim();
+    if (!content || !selectedGroup || !userId || busy) return;
+    setBusy(true); setError("");
+    try {
+      const { data, error } = await supabase.from("chat_group_messages").insert({ group_id: selectedGroup.id, sender_id: userId, content }).select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone").single();
+      if (error) throw error;
+      setGroupMessages((old) => [...old, data as GroupMessage]); setGroupDraft("");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not send group message."); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => {
+    if (!selectedGroup || !userId) return;
+    const channel = supabase.channel("group-messages-" + selectedGroup.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_group_messages", filter: "group_id=eq." + selectedGroup.id }, (payload) => {
+        const row = payload.new as GroupMessage;
+        setGroupMessages((old) => old.some((item) => item.id === row.id) ? old : [...old, row]);
+      }).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [selectedGroup?.id, userId]);
 
   const loadChatPreferences = useCallback(async () => {
     if (!userId) return;
@@ -902,6 +974,10 @@ export default function ChatPreview() {
           </div>
         ) : tab === "Friends" ? (
           <div className="cx-chats">
+            <div className="groups-heading"><strong>GROUPS</strong><button type="button" className="mini-btn" onClick={() => setShowCreateGroup(true)}>＋ Create group</button></div>
+            {groups.map((group) => <button type="button" className="group-row" key={group.id} onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span></button>)}
+            {groups.length === 0 && <p className="group-empty">No groups yet. Create one and invite your friends.</p>}
+            {showCreateGroup && <div className="status-modal-backdrop" onClick={() => setShowCreateGroup(false)}><form className="status-compose" onSubmit={createGroup} onClick={(e) => e.stopPropagation()}><div className="status-compose-head"><strong>Create a group</strong><button type="button" onClick={() => setShowCreateGroup(false)}>×</button></div><label className="profile-field">Group name<input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} maxLength={60} required placeholder="e.g. Project team" /></label><label className="profile-field">Description<input value={newGroupDescription} onChange={(e) => setNewGroupDescription(e.target.value)} maxLength={300} placeholder="Optional description" /></label><div className="section-caption">ADD FRIENDS</div>{friends.map((friend) => <label className="privacy-option" key={friend.id}><span><strong>{displayName(friend)}</strong></span><input type="checkbox" checked={selectedGroupMembers.includes(friend.id)} onChange={(e) => setSelectedGroupMembers((old) => e.target.checked ? [...old, friend.id] : old.filter((id) => id !== friend.id))} /></label>)}<button className="action-btn" disabled={busy || !newGroupName.trim()}>{busy ? "Creating…" : "Create group"}</button></form></div>}
             <div className="section-caption">PEOPLE</div>
             {filteredProfiles.map((profile) => {
               const relation = requests.find((r) =>
@@ -952,7 +1028,11 @@ export default function ChatPreview() {
         <button className={tab === "Settings" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Settings"); setShowMobileChat(false); }}><span>⚙</span>Settings</button>
       </nav>
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
-        {selectedFriend && tab === "Messages" ? <>
+        {selectedGroup && tab === "Messages" ? <>
+          <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><span className="avatar">♧</span><div className="person"><strong>{selectedGroup.name}</strong><small>Group conversation</small></div></header>
+          <div className="messages-area"><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}><p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
+          <form className="composer" onSubmit={sendGroupMessage}><input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} placeholder="Message the group…" maxLength={5000} /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
+        </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
             <span className="avatar">{initials(activeName)}</span>
@@ -1067,6 +1147,7 @@ export default function ChatPreview() {
         .call-overlay { position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:18px;background:#050914dd;backdrop-filter:blur(8px); }.incoming-card,.active-call-card { width:min(100%,520px);border:1px solid #3a4562;border-radius:22px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;overflow:hidden; }.incoming-card { padding:34px 24px;text-align:center; }.call-avatar { width:82px;height:82px;margin:10px auto 20px;display:grid;place-items:center;border-radius:50%;background:#6257b5;color:white;font-size:36px; }.incoming-card h2 { margin:0;font-size:20px; }.incoming-card p { color:#9ca8c0;font-size:13px; }.incoming-actions,.call-controls { display:flex;justify-content:center;gap:12px;margin-top:26px; }.incoming-actions button,.call-controls button { padding:12px 18px;border:0;border-radius:12px;background:#303b53;color:#fff;font-weight:700; }.accept-call { background:#23875e!important; }.decline-call,.hangup { background:#b83c55!important; }.active-call-card { padding:18px; }.call-topline { display:flex;justify-content:space-between;gap:12px;align-items:center;padding:4px 4px 14px;font-size:13px; }.call-topline span { color:#9da9c0;font-size:11px; }.video-stage { position:relative;height:min(58vh,420px);min-height:230px;border-radius:15px;overflow:hidden;background:#070b14; }.remote-video { width:100%;height:100%;object-fit:cover; }.local-video { position:absolute;right:12px;bottom:12px;width:26%;max-height:35%;aspect-ratio:3/4;object-fit:cover;border:2px solid #fff;border-radius:12px;background:#202a40; }.video-placeholder { position:absolute;inset:0;display:grid;place-items:center;color:#aab5ca;font-size:12px;pointer-events:none; }.audio-stage { min-height:260px;display:grid;align-content:center;text-align:center;color:#aab5ca; }.audio-stage .call-avatar { margin-bottom:4px; }.audio-stage p { font-size:12px; }.call-controls { margin:18px 0 4px;flex-wrap:wrap; }.call-controls .control-on { background:#6557c7; }
         .read-ticks { color:#54b9ff;font-weight:900;letter-spacing:-3px;padding-right:3px; }.reaction-chip { margin:6px 4px 0 0;padding:4px 7px;border:1px solid #56617b;border-radius:12px;background:#27344d;color:white;font-size:11px; }.reaction-picker { display:flex;gap:4px;margin-top:7px;padding:5px;background:#101a2c;border:1px solid #45516d;border-radius:20px;width:max-content; }.reaction-picker button,.react-trigger { border:0;background:transparent;color:white;font-size:17px;cursor:pointer; }.react-trigger { display:block;margin-left:auto;font-size:13px;color:#b8c3d9; }.typing-indicator { align-self:flex-start;color:#aeb9d0;font-size:11px;display:flex;align-items:center;gap:4px; }.typing-indicator span { width:5px;height:5px;border-radius:50%;background:#a99aff;animation:typingPulse .8s infinite alternate; }.typing-indicator span:nth-child(2) { animation-delay:.2s; }.typing-indicator span:nth-child(3) { animation-delay:.4s; } @keyframes typingPulse { to { opacity:.25;transform:translateY(-3px); } }.bulk-actions { display:flex;align-items:center;gap:6px;padding:8px;position:sticky;top:0;background:#121a2b;z-index:2; }.bulk-actions strong { flex:1;font-size:11px; }.bulk-actions button { border:1px solid #46516b;border-radius:8px;padding:6px;background:#202a40;color:#fff;font-size:10px; }.chat-row.chat-selected { outline:2px solid #8e80ff;background:#28264a; }
         .back-btn { display:none;border:0;background:transparent;color:#c9bfff;font-size:28px; }.empty-state { margin:auto;color:#8490a9;text-align:center;padding:20px; }
+        .groups-heading { display:flex;align-items:center;justify-content:space-between;padding:16px 12px 8px;color:#817b91;font-size:11px;font-weight:700;letter-spacing:1px; }.group-row { display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;margin-bottom:7px;border:1px solid #eeeaff;border-radius:13px;background:#faf9ff;color:#30245a;text-align:left; }.group-avatar { display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:#eeeaff;color:#7659dc;font-size:20px; }.group-empty { padding:4px 12px 12px;color:#918aa4;font-size:11px; }
         .section-caption { padding:14px 12px 7px;color:#77839c;font-size:9px;font-weight:800;letter-spacing:1.4px; }.request-caption { border-top:1px solid #263149;margin-top:12px; }
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
         .request-row { display:flex;align-items:center;gap:7px;padding:10px 12px;color:#dce2f2;font-size:11px; }.request-row span { flex:1; }.settings-panel { padding:24px;text-align:center; }.large-avatar { width:76px;height:76px;margin:8px auto 14px;font-size:24px;border-radius:50%;display:grid;place-items:center;background:#29334b;color:#fff; }.profile-photo-wrap { display:flex;justify-content:center;margin:8px 0 18px; }.profile-photo { width:88px;height:88px;border-radius:50%;object-fit:cover;border:2px solid #56617b; }.profile-editor { text-align:left;display:flex;flex-direction:column;gap:10px; }.profile-field { display:flex;flex-direction:column;gap:6px;text-align:left;color:#cbd5e8;font-size:12px;font-weight:600; }.profile-field input,.profile-field textarea { width:100%;box-sizing:border-box;border:1px solid #35415a;border-radius:9px;background:#111a2b;color:#f3f6ff;padding:11px;font:inherit;font-weight:400; }.profile-field input[type=file] { font-size:11px; }.profile-field textarea { resize:vertical; }.profile-hint { color:#8290aa;font-size:10px;text-align:left;margin-top:-7px; }.privacy-heading { color:#9ca9c1;font-size:10px;letter-spacing:1px;text-align:left;margin-top:12px; }.privacy-option { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px;border:1px solid #303b53;border-radius:10px;text-align:left; }.privacy-option span { display:flex;flex-direction:column;gap:4px; }.privacy-option strong { color:#e9eefb;font-size:12px; }.privacy-option small { color:#8b96ad;font-size:10px; }.privacy-option input { accent-color:#8e80ff;width:18px;height:18px; }.action-btn { padding:12px 18px;margin-top:12px; }.toast { position:fixed;z-index:5;bottom:22px;left:50%;transform:translateX(-50%);max-width:min(92vw,560px);display:flex;gap:14px;align-items:center;padding:12px 15px;border:1px solid #3b4a65;border-radius:12px;background:#1b2940;color:#dce6ff;font-size:12px;box-shadow:0 10px 40px #0008; }.toast button { border:0;background:transparent;color:white;font-size:18px; }.error-toast { border-color:#8a4250;background:#3a202c;color:#ffd2d9; }
