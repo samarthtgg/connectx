@@ -1005,6 +1005,15 @@ export default function ChatPreview() {
           </div>
         ) : (
           <div className="cx-chats">
+            {groups.length > 0 && <>
+              <div className="groups-heading"><strong>GROUPS</strong><span>{groups.length}</span></div>
+              {groups.map((group) => (
+                <button type="button" className="group-row" key={group.id} onClick={() => void openGroup(group)}>
+                  <span className="group-avatar">♧</span>
+                  <span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span>
+                </button>
+              ))}
+            </>}
             {selectionMode && <div className="bulk-actions"><strong>{selectedChats.length} selected</strong><button onClick={() => clearSelectedChats(false)}>Clear</button><button onClick={() => clearSelectedChats(true)}>Hide</button><button onClick={() => { setSelectionMode(false); setSelectedChats([]); }}>Cancel</button></div>}
             {friends.map((friend) => {
               return <button key={friend.id} className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""} ${selectedChats.includes(friend.id) ? "chat-selected" : ""}`}
