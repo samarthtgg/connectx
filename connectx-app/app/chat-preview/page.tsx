@@ -945,7 +945,7 @@ export default function ChatPreview() {
       </section>
 
       <nav className="mobile-nav" aria-label="Main navigation">
-        <span className="nav-indicator" aria-hidden="true" style={{ transform: `translateX(calc(${tab === "Messages" ? 0 : tab === "Status" ? 1 : tab === "Friends" ? 2 : 3} * (100% + 3px)))` }} />
+        <span className="nav-indicator" aria-hidden="true" style={{ transform: `translateX(${(tab === "Messages" ? 0 : tab === "Status" ? 1 : tab === "Friends" ? 2 : 3) * 100}%)`, marginLeft: `${(tab === "Messages" ? 0 : tab === "Status" ? 1 : tab === "Friends" ? 2 : 3) * 3}px` }} />
         <button className={tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◆</span>Home</button>
         <button className={tab === "Status" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Status"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◉</span>Status</button>
         <button className={tab === "Friends" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Friends"); setShowMobileChat(false); }}><span>♧</span>Friends</button>
