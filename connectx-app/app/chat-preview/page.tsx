@@ -84,6 +84,7 @@ export default function ChatPreview() {
   const [statuses,setStatuses]=useState<StatusUpdate[]>([]);
   const [statusCaption,setStatusCaption]=useState("");
   const [statusFile,setStatusFile]=useState<File|null>(null);
+  const [showStatusComposer,setShowStatusComposer]=useState(false);
   const [recording,setRecording]=useState(false);
   const [voiceBlob,setVoiceBlob]=useState<Blob|null>(null);
   const [voicePreview,setVoicePreview]=useState("");
@@ -183,6 +184,17 @@ export default function ChatPreview() {
     () => profiles.filter((profile) => acceptedIds.has(profile.id) && !chatPreferences.find((pref) => pref.friend_id === profile.id)?.hidden_at),
     [profiles, acceptedIds, chatPreferences],
   );
+  const statusGroups = useMemo(() => {
+    const grouped = new Map<string, StatusUpdate[]>();
+    statuses.filter((status) => status.user_id !== userId).forEach((status) => {
+      const current = grouped.get(status.user_id) ?? [];
+      current.push(status);
+      grouped.set(status.user_id, current);
+    });
+    return Array.from(grouped.entries()).map(([profileId, items]) => ({ profileId, latest: items[0], count: items.length }))
+      .sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime());
+  }, [statuses, userId]);
+  const myStatuses = useMemo(() => statuses.filter((status) => status.user_id === userId), [statuses, userId]);
   const filteredProfiles = useMemo(() => {
     const q = search.trim().toLowerCase();
     return profiles.filter((p) => {
@@ -390,7 +402,7 @@ export default function ChatPreview() {
       }
       const {error:saveError}=await supabase.from("status_updates").insert({user_id:userId,caption:statusCaption.trim()||null,media_url:mediaUrl,media_type:mediaType});
       if(saveError)throw saveError;
-      setStatusCaption("");setStatusFile(null);if(statusInputRef.current)statusInputRef.current.value="";
+      setStatusCaption("");setStatusFile(null);setShowStatusComposer(false);if(statusInputRef.current)statusInputRef.current.value="";
       await loadStatuses();setNotice("Status shared for 24 hours.");
     }catch(e){setError(e instanceof Error?e.message:"Could not publish status.");}
     finally{setBusy(false);}
@@ -833,15 +845,39 @@ export default function ChatPreview() {
           </form>
         ) : tab === "Status" ? (
           <div className="cx-chats status-panel">
-            <form className="status-compose" onSubmit={publishStatus}>
-              <textarea value={statusCaption} onChange={e=>setStatusCaption(e.target.value)} maxLength={700} placeholder="What’s happening? Share a status…" />
-              <label className="status-file">Add photo or video<input ref={statusInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={e=>setStatusFile(e.target.files?.[0]??null)} /></label>
-              {statusFile && <small>{statusFile.name} · {(statusFile.size/1024/1024).toFixed(1)} MB</small>}
-              <button className="action-btn" disabled={busy||(!statusCaption.trim()&&!statusFile)}>{busy?"Sharing…":"Share status"}</button>
-            </form>
-            <div className="section-caption">RECENT STATUS · EXPIRES AFTER 24 HOURS</div>
-            {statuses.map(status=><article className="status-card" key={status.id}><strong>{status.user_id===userId?"Your status":displayName(profiles.find(p=>p.id===status.user_id)??{id:"",username:null,full_name:"ConnectX friend",avatar_url:null})}</strong><small>{new Date(status.created_at).toLocaleString()}</small>{status.media_url && (status.media_type==="video"?<video controls playsInline src={status.media_url}/>:<img src={status.media_url} alt="Status media"/>)}{status.caption&&<p>{status.caption}</p>}</article>)}
-            {statuses.length===0&&<p className="empty">No active statuses yet. Share the first one.</p>}
+            <div className="status-topbar"><div><h2>Updates</h2><p>Share what’s happening</p></div><button type="button" className="status-camera" onClick={() => setShowStatusComposer(true)} aria-label="Add status">＋</button></div>
+            <div className="status-list">
+              <button type="button" className="status-person my-status-row" onClick={() => setShowStatusComposer(true)}>
+                <span className="status-avatar-wrap own"><span className="status-avatar">{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(displayName(myProfile ?? {id:userId,username:null,full_name:"You",avatar_url:null}))}</span><i>＋</i></span>
+                <span className="status-person-copy"><strong>My status</strong><small>{myStatuses.length ? "Tap to add another update" : "Tap to add status update"}</small></span>
+                <span className="status-add-label">Add</span>
+              </button>
+              {myStatuses[0] && <div className="my-status-preview">{myStatuses[0].media_url ? (myStatuses[0].media_type === "video" ? "Video status" : "Photo status") : (myStatuses[0].caption || "Text status")} · {new Date(myStatuses[0].created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</div>}
+            </div>
+            {statusGroups.length > 0 && <>
+              <div className="status-section-title">RECENT UPDATES</div>
+              <div className="status-list">
+                {statusGroups.map(({profileId,latest,count}) => {
+                  const profile = profiles.find((p) => p.id === profileId);
+                  const name = profile ? displayName(profile) : "ConnectX friend";
+                  return <article className="status-person" key={profileId}>
+                    <span className="status-avatar-wrap unread"><span className="status-avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : initials(name)}</span></span>
+                    <span className="status-person-copy"><strong>{name}</strong><small>{new Date(latest.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{count > 1 ? ` · ${count} updates` : ""}</small></span>
+                    <span className="status-kind">{latest.media_type === "video" ? "Video" : latest.media_type === "image" ? "Photo" : "Text"}</span>
+                  </article>;
+                })}
+              </div>
+            </>}
+            {statuses.length === 0 && <div className="status-empty"><div className="status-empty-icon">◉</div><strong>No recent updates</strong><p>When your friends share a status, it will appear here.</p></div>}
+            {showStatusComposer && <div className="status-modal-backdrop" onClick={() => setShowStatusComposer(false)}>
+              <form className="status-compose" onSubmit={publishStatus} onClick={e => e.stopPropagation()}>
+                <div className="status-compose-head"><strong>New status</strong><button type="button" onClick={() => setShowStatusComposer(false)} aria-label="Close">×</button></div>
+                <textarea value={statusCaption} onChange={e=>setStatusCaption(e.target.value)} maxLength={700} placeholder="What’s on your mind?" />
+                <label className="status-file">＋ Add photo or video<input ref={statusInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={e=>setStatusFile(e.target.files?.[0]??null)} /></label>
+                {statusFile && <small>{statusFile.name} · {(statusFile.size/1024/1024).toFixed(1)} MB</small>}
+                <button className="action-btn" disabled={busy||(!statusCaption.trim()&&!statusFile)}>{busy?"Sharing…":"Share status"}</button>
+              </form>
+            </div>}
           </div>
         ) : tab === "Friends" ? (
           <div className="cx-chats">
@@ -1054,7 +1090,7 @@ export default function ChatPreview() {
           .voice-player { width:min(230px,65vw);height:36px; }
           .voice-preview { display:flex;align-items:center;gap:6px;position:absolute;bottom:72px;left:12px;right:12px;padding:8px;border-radius:12px;background:#f3f0ff; }
           .recording-label { color:#c64d65;font-size:11px;white-space:nowrap; }
-          .status-panel { overflow-y:auto; }.status-compose { display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid #eeeaff;border-radius:16px;background:#faf9ff; }.status-compose textarea { min-height:82px;padding:12px;border:1px solid #e5e0f5;border-radius:12px;resize:vertical;color:#241653;background:white; }.status-file { font-size:12px;color:#6855b5; }.status-file input { display:block;margin-top:7px;max-width:100%;font-size:11px; }.status-card { display:flex;flex-direction:column;gap:7px;padding:14px;margin:10px 0;border-radius:14px;background:#f6f3ff;color:#30245a; }.status-card small { color:#81799f;font-size:11px; }.status-card img,.status-card video { width:100%;max-height:320px;object-fit:contain;border-radius:10px;background:#16121f; }.status-card p { margin:0;font-size:13px; }
+          .status-panel { overflow-y:auto;padding:0 0 100px; }.status-topbar { display:flex;align-items:center;justify-content:space-between;padding:22px 20px 16px; }.status-topbar h2 { margin:0;color:#211052;font-size:23px;font-weight:700; }.status-topbar p { margin:4px 0 0;color:#8b849f;font-size:12px; }.status-camera { width:40px;height:40px;border:0;border-radius:50%;background:#eeeaff;color:#7155d4;font-size:27px;line-height:1; }.status-list { padding:0 16px; }.status-person { display:flex;align-items:center;gap:13px;width:100%;min-height:76px;padding:10px 2px;border:0;border-bottom:1px solid #f0edf6;background:transparent;text-align:left;color:#241653; }.status-avatar-wrap { position:relative;display:grid;place-items:center;flex:0 0 54px;width:54px;height:54px;border-radius:50%; }.status-avatar-wrap.unread { padding:3px;border:2px solid #20b96b; }.status-avatar-wrap.own { padding:3px;border:2px solid #ded9e9; }.status-avatar { display:grid;place-items:center;width:100%;height:100%;overflow:hidden;border-radius:50%;background:#eeeaff;color:#7054c8;font-size:17px;font-weight:600; }.status-avatar img { width:100%;height:100%;object-fit:cover; }.status-avatar-wrap i { position:absolute;right:-2px;bottom:-1px;display:grid;place-items:center;width:21px;height:21px;border:2px solid white;border-radius:50%;background:#7659dc;color:white;font-size:16px;font-style:normal; }.status-person-copy { display:flex;flex:1;min-width:0;flex-direction:column;gap:5px; }.status-person-copy strong { overflow:hidden;color:#29213e;font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap; }.status-person-copy small { color:#8d879c;font-size:12px; }.status-add-label,.status-kind { color:#8c849f;font-size:11px; }.my-status-preview { padding:0 0 12px 69px;color:#9690a5;font-size:11px; }.status-section-title { padding:22px 18px 8px;color:#817b91;font-size:11px;font-weight:700;letter-spacing:.7px; }.status-empty { display:flex;align-items:center;flex-direction:column;padding:58px 28px;text-align:center;color:#8d879c; }.status-empty-icon { display:grid;place-items:center;width:58px;height:58px;margin-bottom:14px;border-radius:50%;background:#f0edfa;color:#8067d0;font-size:25px; }.status-empty strong { color:#3b3154;font-size:14px; }.status-empty p { max-width:230px;margin:7px 0;font-size:12px;line-height:1.5; }.status-modal-backdrop { position:fixed;z-index:30;inset:0;display:flex;align-items:flex-end;justify-content:center;padding:16px;background:#17112670; }.status-compose { display:flex;width:min(100%,480px);flex-direction:column;gap:12px;padding:18px;border:1px solid #eeeaff;border-radius:22px;background:white;box-shadow:0 12px 40px #17112625; }.status-compose-head { display:flex;align-items:center;justify-content:space-between;color:#241653;font-size:16px; }.status-compose-head button { border:0;background:transparent;color:#7b7193;font-size:26px; }.status-compose textarea { min-height:110px;padding:14px;border:1px solid #e5e0f5;border-radius:14px;resize:vertical;color:#241653;background:#faf9ff; }.status-file { padding:11px;border-radius:12px;background:#f5f2ff;color:#6855b5;font-size:13px; }.status-file input { display:block;margin-top:8px;max-width:100%;font-size:11px; }.status-compose .action-btn { width:100%; }
         }
       `}</style>
     </main>
