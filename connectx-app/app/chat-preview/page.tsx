@@ -117,6 +117,7 @@ export default function ChatPreview() {
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ url: string; name: string } | null>(null);
   const [friendProfile, setFriendProfile] = useState<Profile | null>(null);
+  const [commonGroups, setCommonGroups] = useState<ChatGroup[]>([]);
   const [loadingFriendProfile, setLoadingFriendProfile] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
@@ -139,6 +140,7 @@ export default function ChatPreview() {
     if (!selectedFriend) return;
     setFriendProfile(selectedFriend);
     setLoadingFriendProfile(true);
+    setCommonGroups([]);
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -147,6 +149,31 @@ export default function ChatPreview() {
         .maybeSingle();
       if (error) throw error;
       if (data) setFriendProfile(data as Profile);
+      if (userId) {
+        const { data: memberships, error: membershipsError } = await supabase
+          .from("chat_group_members")
+          .select("group_id,user_id")
+          .in("user_id", [userId, selectedFriend.id]);
+        if (membershipsError) throw membershipsError;
+        const memberIdsByGroup = new Map<string, Set<string>>();
+        for (const membership of memberships ?? []) {
+          const members = memberIdsByGroup.get(membership.group_id) ?? new Set<string>();
+          members.add(membership.user_id);
+          memberIdsByGroup.set(membership.group_id, members);
+        }
+        const commonIds = Array.from(memberIdsByGroup.entries())
+          .filter(([, members]) => members.has(userId) && members.has(selectedFriend.id))
+          .map(([groupId]) => groupId);
+        if (commonIds.length) {
+          const { data: sharedGroups, error: groupsError } = await supabase
+            .from("chat_groups")
+            .select("id,name,description,created_by,created_at")
+            .in("id", commonIds)
+            .order("created_at", { ascending: false });
+          if (groupsError) throw groupsError;
+          setCommonGroups((sharedGroups ?? []) as ChatGroup[]);
+        }
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load this profile.");
     } finally {
@@ -1345,6 +1372,17 @@ export default function ChatPreview() {
             <strong>{messages.filter((m) => m.message_type === "image" || m.message_type === "video").length}</strong>
             <span>Shared photos and videos in this chat</span>
           </div>
+          <div className="friend-profile-section friend-profile-groups">
+            <small>GROUPS IN COMMON</small>
+            {loadingFriendProfile ? <p>Loading shared groups…</p> : commonGroups.length ? (
+              <div className="common-groups-list">
+                {commonGroups.map((group) => <div className="common-group-row" key={group.id}>
+                  <span className="common-group-avatar">♧</span>
+                  <span><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span>
+                </div>)}
+              </div>
+            ) : <p>No groups in common yet.</p>}
+          </div>
           <div className="friend-profile-footer">Username · {friendProfile.username ? "@" + friendProfile.username : "Not set"}</div>
         </section>
       </div>}
@@ -1426,7 +1464,13 @@ export default function ChatPreview() {
         .empty { color:#8994ad;text-align:center;font-size:12px;padding:20px;line-height:1.5; }
         .profile-row { display:flex;align-items:center;gap:10px;padding:16px;border-top:1px solid #263149; }.profile-avatar { width:35px;height:35px;font-size:11px; }.profile-row strong,.profile-row small { display:block;font-size:11px; }.profile-row small { color:#8290a9;margin-top:4px; }.online-dot { margin-left:auto;color:#55c69a;font-size:11px; }
         .cx-conversation { flex:1;min-width:0;display:flex;flex-direction:column;background:#0d1423; }.conversation-head { height:78px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid #232d42;background:#121a2b; }
-        .person { flex:1; }.person small { display:block;color:#58c69c;font-size:10px;margin-top:5px; }.profile-open-avatar,.profile-open-name { border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:0; }.profile-open-avatar { border-radius:50%; }.profile-open-avatar:focus-visible,.profile-open-name:focus-visible { outline:2px solid #9b8cff;outline-offset:4px;border-radius:8px; }.profile-open-name { min-width:0; }.profile-modal-backdrop { position:fixed;z-index:30;inset:0;display:grid;place-items:center;padding:18px;background:#050914bb;backdrop-filter:blur(7px); }.friend-profile-card { width:min(100%,440px);max-height:min(90dvh,820px);overflow-y:auto;border:1px solid #39445e;border-radius:18px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;text-align:left; }.friend-profile-topbar { position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:16px;padding:13px 16px;background:#151f33;border-bottom:1px solid #303b53; }.friend-profile-topbar button { width:30px;height:30px;border:0;background:transparent;color:inherit;font-size:28px;line-height:1; }.friend-profile-topbar strong { flex:1;font-size:15px;font-weight:600; }.friend-profile-identity { padding:28px 20px 20px;text-align:center; }.friend-profile-avatar { width:112px;height:112px;margin:0 auto 15px;padding:0;border:0;overflow:hidden;display:grid;place-items:center;border-radius:50%;background:#6257a8;color:#fff;font-size:30px;font-weight:800;cursor:pointer; }.friend-profile-avatar img { width:100%;height:100%;object-fit:cover; }.friend-profile-card h2 { margin:0;font-size:22px;font-weight:650; }.friend-profile-username { margin:6px 0;color:#a99aff;font-size:13px; }.friend-profile-identity>small { color:#8996af;font-size:11px; }.friend-profile-actions { display:flex;justify-content:center;gap:12px;margin:22px auto 0; }.friend-profile-actions button { display:flex;min-width:88px;flex-direction:column;align-items:center;gap:7px;padding:10px 14px;border:1px solid #39445e;border-radius:12px;background:#202a40;color:#b9a7ff;font-size:11px; }.friend-profile-actions button span { font-size:20px; }.friend-profile-section { margin:0 14px 10px;padding:15px 16px;border-radius:12px;background:#202a40; }.friend-profile-section>small { display:block;margin-bottom:10px;color:#a99aff;font-size:10px;font-weight:700;letter-spacing:1px; }.friend-profile-section p { margin:0;color:#e1e5ef;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.friend-profile-note { display:block;margin-top:10px;color:#8996af;font-size:11px; }.friend-profile-media { display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 12px; }.friend-profile-media>small { grid-column:1/-1; }.friend-profile-media strong { font-size:22px; }.friend-profile-media span { color:#8996af;font-size:11px; }.friend-profile-footer { padding:10px 20px 18px;color:#8996af;font-size:11px; }.cx-shell[data-theme="dark"] .friend-profile-card,.cx-shell[data-theme="dark"] .friend-profile-topbar { background:#171722;border-color:#302e42; }.cx-shell[data-theme="dark"] .friend-profile-section,.cx-shell[data-theme="dark"] .friend-profile-actions button { background:#20202d;border-color:#39364d; }.messages-area { flex:1;overflow:auto;padding:25px clamp(16px,5vw,70px);display:flex;flex-direction:column;gap:14px; }
+        .person { flex:1; }.person small { display:block;color:#58c69c;font-size:10px;margin-top:5px; }.profile-open-avatar,.profile-open-name { border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:0; }.profile-open-avatar { border-radius:50%; }.profile-open-avatar:focus-visible,.profile-open-name:focus-visible { outline:2px solid #9b8cff;outline-offset:4px;border-radius:8px; }.profile-open-name { min-width:0; }.profile-modal-backdrop { position:fixed;z-index:30;inset:0;display:grid;place-items:center;padding:18px;background:#050914bb;backdrop-filter:blur(7px); }.friend-profile-card { width:min(100%,440px);max-height:min(90dvh,820px);overflow-y:auto;border:1px solid #39445e;border-radius:18px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;text-align:left; }.friend-profile-topbar { position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:16px;padding:13px 16px;background:#151f33;border-bottom:1px solid #303b53; }.friend-profile-topbar button { width:30px;height:30px;border:0;background:transparent;color:inherit;font-size:28px;line-height:1; }.friend-profile-topbar strong { flex:1;font-size:15px;font-weight:600; }.friend-profile-identity { padding:28px 20px 20px;text-align:center; }.friend-profile-avatar { width:112px;height:112px;margin:0 auto 15px;padding:0;border:0;overflow:hidden;display:grid;place-items:center;border-radius:50%;background:#6257a8;color:#fff;font-size:30px;font-weight:800;cursor:pointer; }.friend-profile-avatar img { width:100%;height:100%;object-fit:cover; }.friend-profile-card h2 { margin:0;font-size:22px;font-weight:650; }.friend-profile-username { margin:6px 0;color:#a99aff;font-size:13px; }.friend-profile-identity>small { color:#8996af;font-size:11px; }.friend-profile-actions { display:flex;justify-content:center;gap:12px;margin:22px auto 0; }.friend-profile-actions button { display:flex;min-width:88px;flex-direction:column;align-items:center;gap:7px;padding:10px 14px;border:1px solid #39445e;border-radius:12px;background:#202a40;color:#b9a7ff;font-size:11px; }.friend-profile-actions button span { font-size:20px; }.friend-profile-section { margin:0 14px 10px;padding:15px 16px;border-radius:12px;background:#202a40; }.friend-profile-section>small { display:block;margin-bottom:10px;color:#a99aff;font-size:10px;font-weight:700;letter-spacing:1px; }.friend-profile-section p { margin:0;color:#e1e5ef;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.friend-profile-note { display:block;margin-top:10px;color:#8996af;font-size:11px; }        .friend-profile-groups .common-groups-list { display:grid;gap:10px; }
+        .common-group-row { display:flex;align-items:center;gap:11px;min-width:0; }
+        .common-group-avatar { width:38px;height:38px;flex:0 0 38px;display:grid;place-items:center;border-radius:12px;background:#39345b;color:#c5b6ff;font-size:18px; }
+        .common-group-row>span:last-child { min-width:0;display:grid;gap:4px; }
+        .common-group-row strong { color:#f5f6fc;font-size:13px;overflow-wrap:anywhere; }
+        .common-group-row small { color:#8996af;font-size:11px;overflow-wrap:anywhere; }
+.friend-profile-media { display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 12px; }.friend-profile-media>small { grid-column:1/-1; }.friend-profile-media strong { font-size:22px; }.friend-profile-media span { color:#8996af;font-size:11px; }.friend-profile-footer { padding:10px 20px 18px;color:#8996af;font-size:11px; }.cx-shell[data-theme="dark"] .friend-profile-card,.cx-shell[data-theme="dark"] .friend-profile-topbar { background:#171722;border-color:#302e42; }.cx-shell[data-theme="dark"] .friend-profile-section,.cx-shell[data-theme="dark"] .friend-profile-actions button { background:#20202d;border-color:#39364d; }.messages-area { flex:1;overflow:auto;padding:25px clamp(16px,5vw,70px);display:flex;flex-direction:column;gap:14px; }
         .today { align-self:center;padding:6px 12px;border-radius:20px;background:#182237;color:#8994ad;font-size:9px;letter-spacing:1px;margin-bottom:12px; }
         .message-line { display:flex;width:100%;justify-content:flex-start; }.message-line.mine { justify-content:flex-end; }.reply-compose { display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1 0 100%;padding:8px 11px;border-left:3px solid #8068e8;border-radius:8px;background:#f1efff;color:#30245a; }.reply-compose span { display:flex;min-width:0;flex-direction:column;gap:3px; }.reply-compose strong { font-size:11px; }.reply-compose small { overflow:hidden;color:#81799f;font-size:11px;text-overflow:ellipsis;white-space:nowrap; }.reply-compose button { border:0;background:transparent;color:inherit;font-size:22px; }.reply-quote { display:flex;flex-direction:column;gap:3px;margin-bottom:7px;padding:6px 8px;border-left:3px solid #a18af0;border-radius:6px;background:#ffffff25; }.reply-quote strong { font-size:10px;opacity:.85; }.reply-quote span { overflow:hidden;font-size:11px;text-overflow:ellipsis;white-space:nowrap;max-width:230px; }.message-line { touch-action:pan-y; }.bubble { max-width:min(75%,440px);padding:11px 14px 8px;border-radius:16px 16px 16px 5px;background:#202b40; }.mine-bubble { background:#6858d8;border-radius:16px 16px 5px 16px; }.bubble p { margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.bubble small { display:block;text-align:right;color:#d2ccef;font-size:9px;margin-top:5px; }
         .composer { display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:15px 20px;border-top:1px solid #232d42;background:#121a2b;position:relative; }.composer > input:not([type="file"]) { flex:1 1 120px;min-width:0;padding:14px;border:1px solid #37425c;border-radius:12px;background:#0c1424;font-size:13px; }.composer .attach-btn { position:relative;overflow:hidden;display:grid;place-items:center; }.composer .attachment-input { position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer; }.attach-btn { flex:0 0 40px;height:40px;border:1px solid #56617b;border-radius:12px;background:transparent;color:#b8aaff;font-size:28px;line-height:1;cursor:pointer; }.attachment-preview { display:flex;align-items:center;gap:8px;flex-basis:100%;min-width:0;padding:7px 10px;border:1px solid #e7e1ff;border-radius:12px;background:#f4f2ff;color:#514774;font-size:11px; }.attachment-preview img,.attachment-preview video { width:42px;height:42px;flex:0 0 42px;border-radius:8px;object-fit:cover;background:#ddd; }.attachment-preview span { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.attachment-preview button { border:0;background:transparent;color:#7054c8;font-size:22px;cursor:pointer; }.chat-media { display:block;max-width:min(260px,65vw);max-height:320px;border-radius:12px;object-fit:contain; }.expired-media { color:inherit;opacity:.75;font-size:12px; }.send,.mini-btn,.action-btn { border:0;border-radius:10px;background:#7868eb;color:white;font-weight:700;cursor:pointer; }.composer .send { position:relative;z-index:5;display:grid;place-items:center;width:46px;height:46px;min-width:46px;flex:0 0 46px;margin:0;padding:0;border:0;border-radius:12px;background:#7868eb;color:#fff;font-size:19px;font-weight:800;cursor:pointer;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent; }.send:disabled,.mini-btn:disabled { opacity:.4;cursor:not-allowed; }
