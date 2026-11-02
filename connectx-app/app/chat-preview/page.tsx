@@ -97,6 +97,7 @@ export default function ChatPreview() {
   const typingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
+  const [photoViewer, setPhotoViewer] = useState<{ url: string; name: string } | null>(null);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<ChatGroup | null>(null);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
@@ -1127,7 +1128,7 @@ export default function ChatPreview() {
                 onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
                 onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
                 onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } chooseFriend(friend); }}>
-                {friend.avatar_url ? <img className="avatar" src={friend.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(friend))}</span>}
+                {friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}
                 <span className="chat-info"><strong>{displayName(friend)}</strong><small>{friend.username ? `@${friend.username}` : "Tap to open chat"}</small></span>
               </button>;
             })}
@@ -1151,7 +1152,7 @@ export default function ChatPreview() {
         </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
-            <span className="avatar">{initials(activeName)}</span>
+            {selectedFriend.avatar_url ? <img className="avatar chat-header-avatar" src={selectedFriend.avatar_url} alt={`${activeName} profile photo`} /> : <span className="avatar chat-header-avatar">{initials(activeName)}</span>}
             <div className="person"><strong>{activeName}</strong><small>ConnectX friend</small></div>
             <div className="call-actions">
               <button className="call-icon" title="Audio call" aria-label="Start audio call"
@@ -1201,6 +1202,14 @@ export default function ChatPreview() {
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
       </section>
+
+      {photoViewer && <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={`${photoViewer.name} profile photo`} onClick={() => setPhotoViewer(null)}>
+        <div className="photo-viewer-card" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="photo-viewer-close" onClick={() => setPhotoViewer(null)} aria-label="Close photo">×</button>
+          <img src={photoViewer.url} alt={`${photoViewer.name} profile photo enlarged`} />
+          <strong>{photoViewer.name}</strong>
+        </div>
+      </div>}
 
       {incomingCall && <div className="call-overlay">
         <div className="incoming-card">
@@ -1341,6 +1350,11 @@ export default function ChatPreview() {
         .cx-shell[data-theme="dark"] .group-row { background:#20202d; }
         @media(max-width:700px) { .cx-rail { width:54px; }.cx-list { width:calc(100% - 54px);min-width:0; }.cx-conversation { display:none; }.cx-conversation.show-mobile { display:flex;position:absolute;inset:0 0 0 54px;z-index:2; }.cx-list.hide-mobile { display:none; }.back-btn { display:block; }.conversation-head { padding:0 12px;gap:9px; }.composer { padding:12px; }.messages-area { padding:20px 14px; } }
         .header-profile img { width:100%;height:100%;object-fit:cover;border-radius:50%; }
+        .chat-row-photo { object-fit:cover;cursor:zoom-in; }.chat-header-avatar { object-fit:cover; }
+        .photo-viewer { position:fixed;z-index:60;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#080711d9; }
+        .photo-viewer-card { position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;max-width:min(90vw,440px);max-height:90vh;color:#fff; }
+        .photo-viewer-card img { display:block;width:min(78vw,380px);height:min(78vw,380px);max-height:70vh;object-fit:contain;border-radius:18px;background:#171522; }
+        .photo-viewer-card strong { font-size:15px; }.photo-viewer-close { position:absolute;top:-14px;right:-14px;z-index:1;width:38px;height:38px;border:1px solid #ffffff55;border-radius:50%;background:#242131;color:white;font-size:26px;line-height:1;cursor:pointer; }
         .search-row { display:flex;gap:12px;align-items:center;padding:0 20px 0 0; }.search-row .search-box { flex:1;margin:0 0 20px 17px; }
         .refresh-btn { flex-shrink:0;margin-bottom:20px;padding:11px 17px;border:0;border-radius:28px;background:linear-gradient(135deg,#8068e8,#7654d7);color:#fff;font-size:13px;font-weight:700;cursor:pointer; }
         .mobile-nav { display:none; }
