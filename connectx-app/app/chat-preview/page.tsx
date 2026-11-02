@@ -116,6 +116,22 @@ export default function ChatPreview() {
   const [photoViewer, setPhotoViewer] = useState<{ url: string; name: string } | null>(null);
   const [friendProfile, setFriendProfile] = useState<Profile | null>(null);
   const [loadingFriendProfile, setLoadingFriendProfile] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
+  const [mutedChats, setMutedChats] = useState<string[]>([]);
+  const [chatTheme, setChatTheme] = useState(0);
+  const chatThemes = [
+    {name:"Classic",bg:"#f7f5ff",mine:"#d9ccff",theirs:"#ffffff"}, {name:"Ocean",bg:"#eaf6ff",mine:"#b9e2ff",theirs:"#ffffff"},
+    {name:"Forest",bg:"#edf7ee",mine:"#c8e8c9",theirs:"#ffffff"}, {name:"Sunset",bg:"#fff0e9",mine:"#ffd0b8",theirs:"#ffffff"},
+    {name:"Rose",bg:"#fff0f4",mine:"#ffd0df",theirs:"#ffffff"}, {name:"Lavender",bg:"#f2efff",mine:"#d9d0ff",theirs:"#ffffff"},
+    {name:"Midnight",bg:"#141827",mine:"#45416f",theirs:"#252b3d"}, {name:"Mint",bg:"#e9f8f3",mine:"#bdebdc",theirs:"#ffffff"},
+    {name:"Sand",bg:"#f7f0e4",mine:"#ead8b8",theirs:"#ffffff"}, {name:"Graphite",bg:"#e9eaee",mine:"#cbd0dc",theirs:"#ffffff"}
+  ];
+  const activeChatTheme = chatThemes[chatTheme] || chatThemes[0];
+  useEffect(() => { try { const saved=JSON.parse(localStorage.getItem("connectx-muted-chats")||"[]"); if(Array.isArray(saved)) setMutedChats(saved); } catch {} }, []);
+  useEffect(() => { if(!selectedFriend) return; try { const n=Number(localStorage.getItem("connectx-theme-"+selectedFriend.id)); setChatTheme(Number.isInteger(n)&&n>=0&&n<10?n:0); } catch { setChatTheme(0); } }, [selectedFriend?.id]);
 
   const openFriendProfile = async () => {
     if (!selectedFriend) return;
@@ -1194,10 +1210,18 @@ export default function ChatPreview() {
             </button>
             <button type="button" className="person profile-open-name" onClick={() => void openFriendProfile()} aria-label={"View " + activeName + "'s profile"}><strong>{activeName}</strong><small>View profile</small></button>
             <div className="call-actions">
-              <button className="call-icon" title="Audio call" aria-label="Start audio call"
-                disabled={!!activeCall || !!incomingCall} onClick={() => startCall("audio")}>☎</button>
-              <button className="call-icon" title="Video call" aria-label="Start video call"
-                disabled={!!activeCall || !!incomingCall} onClick={() => startCall("video")}>▣</button>
+              <button className="call-icon" title="Audio call" aria-label="Start audio call" disabled={!!activeCall || !!incomingCall} onClick={() => startCall("audio")}>☎</button>
+              <button className="call-icon" title="Video call" aria-label="Start video call" disabled={!!activeCall || !!incomingCall} onClick={() => startCall("video")}>▣</button>
+              <div className="chat-more-wrap"><button type="button" className="call-icon" aria-label="More chat options" onClick={() => setChatMenuOpen(v=>!v)}>⋮</button>
+                {chatMenuOpen && <div className="chat-more-menu">
+                  <button onClick={() => {setSelectionMode(true);setSelectedChats([selectedFriend!.id]);setShowMobileChat(false);setChatMenuOpen(false);}}>☑ Select chats</button>
+                  <button onClick={() => {setThemePickerOpen(v=>!v);setChatMenuOpen(false);}}>🎨 Chat theme</button>
+                  <button onClick={() => {setChatSearchOpen(v=>!v);setChatSearch("");setChatMenuOpen(false);}}>⌕ Search messages</button>
+                  <button onClick={() => {const next=mutedChats.includes(selectedFriend!.id)?mutedChats.filter(x=>x!==selectedFriend!.id):[...mutedChats,selectedFriend!.id];setMutedChats(next);try{localStorage.setItem("connectx-muted-chats",JSON.stringify(next));}catch{}setNotice(next.includes(selectedFriend!.id)?"Chat muted on this device.":"Chat unmuted.");setChatMenuOpen(false);}}>{mutedChats.includes(selectedFriend!.id)?"🔔 Unmute chat":"🔕 Mute notifications"}</button>
+                  <button onClick={() => {const t=messages.map(m=>(m.sender_id===userId?"You":activeName)+": "+m.content).join("\n");void navigator.clipboard.writeText(t).then(()=>setNotice("Chat copied.")).catch(()=>setError("Clipboard access failed."));setChatMenuOpen(false);}}>▣ Copy chat</button>
+                  <button onClick={() => {const t=messages.map(m=>(m.sender_id===userId?"You":activeName)+": "+m.content).join("\n");const u=URL.createObjectURL(new Blob([t],{type:"text/plain"}));const a=document.createElement("a");a.href=u;a.download="ConnectX-chat.txt";a.click();URL.revokeObjectURL(u);setChatMenuOpen(false);}}>↓ Export chat</button>
+                  <button className="danger-option" onClick={() => {void saveChatPreference(selectedFriend!.id,{cleared_at:new Date().toISOString()}).then(()=>{setMessages([]);setReactions([]);setNotice("Chat cleared.");}).catch(e=>setError(e.message));setChatMenuOpen(false);}}>⌫ Clear chat</button>
+                </div>}</div>
             </div>
           </header>
           <div className="messages-area" ref={messagesAreaRef}>
