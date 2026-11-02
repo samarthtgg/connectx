@@ -98,7 +98,7 @@ export default function ChatPreview() {
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [groupDraft, setGroupDraft] = useState("");
   const [chatMediaFile, setChatMediaFile] = useState<File | null>(null);
-  const [mediaClock, setMediaClock] = useState(Date.now());
+  const [mediaClock, setMediaClock] = useState(0);
   const chatMediaInputRef = useRef<HTMLInputElement | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -754,6 +754,7 @@ export default function ChatPreview() {
   }
 
   useEffect(() => {
+    setMediaClock(Date.now());
     const timer = window.setInterval(() => setMediaClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
