@@ -114,6 +114,27 @@ export default function ChatPreview() {
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ url: string; name: string } | null>(null);
+  const [friendProfile, setFriendProfile] = useState<Profile | null>(null);
+  const [loadingFriendProfile, setLoadingFriendProfile] = useState(false);
+
+  const openFriendProfile = async () => {
+    if (!selectedFriend) return;
+    setFriendProfile(selectedFriend);
+    setLoadingFriendProfile(true);
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen")
+        .eq("id", selectedFriend.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) setFriendProfile(data as Profile);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load this profile.");
+    } finally {
+      setLoadingFriendProfile(false);
+    }
+  };
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<ChatGroup | null>(null);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
@@ -1168,8 +1189,10 @@ export default function ChatPreview() {
         </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
-            {selectedFriend.avatar_url ? <img className="avatar chat-header-avatar" src={selectedFriend.avatar_url} alt={`${activeName} profile photo`} /> : <span className="avatar chat-header-avatar">{initials(activeName)}</span>}
-            <div className="person"><strong>{activeName}</strong><small>ConnectX friend</small></div>
+            <button type="button" className="profile-open-avatar" aria-label={"View " + activeName + "'s profile"} onClick={() => void openFriendProfile()}>
+              {selectedFriend.avatar_url ? <img className="avatar chat-header-avatar" src={selectedFriend.avatar_url} alt="" /> : <span className="avatar chat-header-avatar">{initials(activeName)}</span>}
+            </button>
+            <button type="button" className="person profile-open-name" onClick={() => void openFriendProfile()} aria-label={"View " + activeName + "'s profile"}><strong>{activeName}</strong><small>View profile</small></button>
             <div className="call-actions">
               <button className="call-icon" title="Audio call" aria-label="Start audio call"
                 disabled={!!activeCall || !!incomingCall} onClick={() => startCall("audio")}>☎</button>
@@ -1218,6 +1241,19 @@ export default function ChatPreview() {
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
       </section>
+
+      {friendProfile && <div className="profile-modal-backdrop" role="presentation" onClick={() => setFriendProfile(null)}>
+        <section className="friend-profile-card" role="dialog" aria-modal="true" aria-label={displayName(friendProfile) + " profile"} onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="friend-profile-close" onClick={() => setFriendProfile(null)} aria-label="Close profile">×</button>
+          <div className="friend-profile-avatar">
+            {friendProfile.avatar_url ? <img src={friendProfile.avatar_url} alt={displayName(friendProfile) + " profile photo"} /> : <span>{initials(displayName(friendProfile))}</span>}
+          </div>
+          <h2>{displayName(friendProfile)}</h2>
+          {friendProfile.username && <p className="friend-profile-username">@{friendProfile.username}</p>}
+          <div className="friend-profile-bio">{loadingFriendProfile ? "Loading profile…" : friendProfile.bio?.trim() || "No bio added yet."}</div>
+          <div className="friend-profile-footer"><span>ConnectX friend</span>{friendProfile.show_last_seen === false && <span>Last seen hidden</span>}</div>
+        </section>
+      </div>}
 
       {photoViewer && <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={`${photoViewer.name} profile photo`} onClick={() => setPhotoViewer(null)}>
         <div className="photo-viewer-card" onClick={(event) => event.stopPropagation()}>
@@ -1296,7 +1332,7 @@ export default function ChatPreview() {
         .empty { color:#8994ad;text-align:center;font-size:12px;padding:20px;line-height:1.5; }
         .profile-row { display:flex;align-items:center;gap:10px;padding:16px;border-top:1px solid #263149; }.profile-avatar { width:35px;height:35px;font-size:11px; }.profile-row strong,.profile-row small { display:block;font-size:11px; }.profile-row small { color:#8290a9;margin-top:4px; }.online-dot { margin-left:auto;color:#55c69a;font-size:11px; }
         .cx-conversation { flex:1;min-width:0;display:flex;flex-direction:column;background:#0d1423; }.conversation-head { height:78px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid #232d42;background:#121a2b; }
-        .person { flex:1; }.person small { display:block;color:#58c69c;font-size:10px;margin-top:5px; }.messages-area { flex:1;overflow:auto;padding:25px clamp(16px,5vw,70px);display:flex;flex-direction:column;gap:14px; }
+        .person { flex:1; }.person small { display:block;color:#58c69c;font-size:10px;margin-top:5px; }.profile-open-avatar,.profile-open-name { border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;padding:0; }.profile-open-avatar { border-radius:50%; }.profile-open-avatar:focus-visible,.profile-open-name:focus-visible { outline:2px solid #9b8cff;outline-offset:4px;border-radius:8px; }.profile-open-name { min-width:0; }.profile-modal-backdrop { position:fixed;z-index:30;inset:0;display:grid;place-items:center;padding:18px;background:#050914bb;backdrop-filter:blur(7px); }.friend-profile-card { position:relative;width:min(100%,360px);padding:30px 24px 22px;border:1px solid #39445e;border-radius:22px;background:#151f33;color:#f5f6fc;text-align:center;box-shadow:0 24px 80px #0009; }.friend-profile-close { position:absolute;top:10px;right:13px;border:0;background:transparent;color:inherit;font-size:27px;cursor:pointer; }.friend-profile-avatar { width:104px;height:104px;margin:8px auto 15px;overflow:hidden;display:grid;place-items:center;border-radius:50%;background:#6257a8;color:#fff;font-size:30px;font-weight:800; }.friend-profile-avatar img { width:100%;height:100%;object-fit:cover; }.friend-profile-card h2 { margin:0;font-size:20px; }.friend-profile-username { margin:6px 0 0;color:#a99aff;font-size:13px; }.friend-profile-bio { min-height:44px;margin:20px 0;padding:14px;border-radius:12px;background:#202a40;color:#d5dced;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.friend-profile-footer { display:flex;justify-content:center;gap:12px;flex-wrap:wrap;color:#8996af;font-size:10px; }.messages-area { flex:1;overflow:auto;padding:25px clamp(16px,5vw,70px);display:flex;flex-direction:column;gap:14px; }
         .today { align-self:center;padding:6px 12px;border-radius:20px;background:#182237;color:#8994ad;font-size:9px;letter-spacing:1px;margin-bottom:12px; }
         .message-line { display:flex;width:100%;justify-content:flex-start; }.message-line.mine { justify-content:flex-end; }.reply-compose { display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1 0 100%;padding:8px 11px;border-left:3px solid #8068e8;border-radius:8px;background:#f1efff;color:#30245a; }.reply-compose span { display:flex;min-width:0;flex-direction:column;gap:3px; }.reply-compose strong { font-size:11px; }.reply-compose small { overflow:hidden;color:#81799f;font-size:11px;text-overflow:ellipsis;white-space:nowrap; }.reply-compose button { border:0;background:transparent;color:inherit;font-size:22px; }.reply-quote { display:flex;flex-direction:column;gap:3px;margin-bottom:7px;padding:6px 8px;border-left:3px solid #a18af0;border-radius:6px;background:#ffffff25; }.reply-quote strong { font-size:10px;opacity:.85; }.reply-quote span { overflow:hidden;font-size:11px;text-overflow:ellipsis;white-space:nowrap;max-width:230px; }.message-line { touch-action:pan-y; }.bubble { max-width:min(75%,440px);padding:11px 14px 8px;border-radius:16px 16px 16px 5px;background:#202b40; }.mine-bubble { background:#6858d8;border-radius:16px 16px 5px 16px; }.bubble p { margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.bubble small { display:block;text-align:right;color:#d2ccef;font-size:9px;margin-top:5px; }
         .composer { display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:15px 20px;border-top:1px solid #232d42;background:#121a2b;position:relative; }.composer > input:not([type="file"]) { flex:1 1 120px;min-width:0;padding:14px;border:1px solid #37425c;border-radius:12px;background:#0c1424;font-size:13px; }.composer .attach-btn { position:relative;overflow:hidden;display:grid;place-items:center; }.composer .attachment-input { position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer; }.attach-btn { flex:0 0 40px;height:40px;border:1px solid #56617b;border-radius:12px;background:transparent;color:#b8aaff;font-size:28px;line-height:1;cursor:pointer; }.attachment-preview { display:flex;align-items:center;gap:8px;flex-basis:100%;min-width:0;padding:7px 10px;border:1px solid #e7e1ff;border-radius:12px;background:#f4f2ff;color:#514774;font-size:11px; }.attachment-preview img,.attachment-preview video { width:42px;height:42px;flex:0 0 42px;border-radius:8px;object-fit:cover;background:#ddd; }.attachment-preview span { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.attachment-preview button { border:0;background:transparent;color:#7054c8;font-size:22px;cursor:pointer; }.chat-media { display:block;max-width:min(260px,65vw);max-height:320px;border-radius:12px;object-fit:contain; }.expired-media { color:inherit;opacity:.75;font-size:12px; }.send,.mini-btn,.action-btn { border:0;border-radius:10px;background:#7868eb;color:white;font-weight:700;cursor:pointer; }.composer .send { position:relative;z-index:5;display:grid;place-items:center;width:46px;height:46px;min-width:46px;flex:0 0 46px;margin:0;padding:0;border:0;border-radius:12px;background:#7868eb;color:#fff;font-size:19px;font-weight:800;cursor:pointer;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent; }.send:disabled,.mini-btn:disabled { opacity:.4;cursor:not-allowed; }
