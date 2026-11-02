@@ -107,6 +107,7 @@ export default function ChatPreview() {
   const [selectedChats, setSelectedChats] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [messageSelectionMode, setMessageSelectionMode] = useState(false);
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [reactionMessage, setReactionMessage] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1218,7 +1219,6 @@ export default function ChatPreview() {
                 </button>
               ))}
             </>}
-            {selectionMode && <div className="bulk-actions"><strong>{selectedChats.length} selected</strong><button onClick={() => {if(selectedFriend && selectedChats.includes(selectedFriend.id)){const t=messages.map(m=>(m.sender_id===userId?"You":activeName)+": "+m.content).join("\n");void navigator.clipboard.writeText(t).then(()=>setNotice("Chat copied.")).catch(()=>setError("Copy failed."));}else setNotice("Open a selected chat to copy its messages.");}}>Copy</button><button onClick={() => clearSelectedChats(false)}>Clear</button><button onClick={() => clearSelectedChats(true)}>Delete</button><button onClick={() => { setSelectionMode(false); setSelectedChats([]); }}>Cancel</button></div>}
             {friends.map((friend) => {
               return <button key={friend.id} className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""} ${selectedChats.includes(friend.id) ? "chat-selected" : ""}`}
                 onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
@@ -1257,7 +1257,7 @@ export default function ChatPreview() {
               <button className="call-icon" title="Video call" aria-label="Start video call" disabled={!!activeCall || !!incomingCall} onClick={() => startCall("video")}>▣</button>
               <div className="chat-more-wrap"><button type="button" className="call-icon" aria-label="More chat options" onClick={() => setChatMenuOpen(v=>!v)}>⋮</button>
                 {chatMenuOpen && <div className="chat-more-menu">
-                  <button onClick={() => {setSelectionMode(true);setSelectedMessageIds([]);setChatMenuOpen(false);setNotice("Tap individual messages to select them.");}}>☑ Select messages</button>
+                  <button onClick={() => {setMessageSelectionMode(true);setSelectedMessageIds([]);setChatMenuOpen(false);setNotice("Tap individual messages to select them.");}}>☑ Select messages</button>
                   <button onClick={() => {setThemePickerOpen(v=>!v);setChatMenuOpen(false);}}>🎨 Chat theme</button>
                   <button onClick={() => {setChatSearchOpen(v=>!v);setChatSearch("");setChatMenuOpen(false);}}>⌕ Search messages</button>
                   <button onClick={() => {const next=mutedChats.includes(selectedFriend!.id)?mutedChats.filter(x=>x!==selectedFriend!.id):[...mutedChats,selectedFriend!.id];setMutedChats(next);try{localStorage.setItem("connectx-muted-chats",JSON.stringify(next));}catch{}setNotice(next.includes(selectedFriend!.id)?"Chat muted on this device.":"Chat unmuted.");setChatMenuOpen(false);}}>{mutedChats.includes(selectedFriend!.id)?"🔔 Unmute chat":"🔕 Mute notifications"}</button>
@@ -1271,11 +1271,11 @@ export default function ChatPreview() {
             <div className="chat-theme-carousel">{chatThemes.map((theme,index)=><button type="button" key={theme.name} className={chatTheme===index?"chat-theme-choice chosen":"chat-theme-choice"} onClick={()=>{setChatTheme(index);try{localStorage.setItem("connectx-theme-"+selectedFriend.id,String(index));}catch{}}}>
               <span className="theme-preview" style={{background:theme.bg}}><i style={{background:theme.theirs}}/><i style={{background:theme.mine}}/><i style={{background:theme.mine}}/></span><small>{theme.name}</small></button>)}</div></div>}
           {chatSearchOpen && <div className="chat-search-bar"><input autoFocus value={chatSearch} onChange={e=>setChatSearch(e.target.value)} placeholder="Search messages in this chat"/><button onClick={()=>{setChatSearchOpen(false);setChatSearch("");}}>×</button><small>{messages.filter(m=>m.content.toLowerCase().includes(chatSearch.toLowerCase())).length} found</small></div>}
-          {selectionMode && <div className="bulk-actions message-selection-toolbar">
+          {messageSelectionMode && <div className="bulk-actions message-selection-toolbar">
             <strong>{selectedMessageIds.length} message(s) selected</strong>
             <button type="button" disabled={!selectedMessageIds.length} onClick={() => void copySelectedMessages()}>Copy</button>
             <button type="button" className="danger-option" disabled={!selectedMessageIds.length} onClick={() => void deleteSelectedMessages()}>Delete</button>
-            <button type="button" onClick={() => { setSelectionMode(false); setSelectedMessageIds([]); }}>Cancel</button>
+            <button type="button" onClick={() => { setMessageSelectionMode(false); setSelectedMessageIds([]); }}>Cancel</button>
           </div>}
           <div className="messages-area" ref={messagesAreaRef} style={{background:activeChatTheme.bg}}>
             <div className="today">DIRECT MESSAGES</div>
@@ -1283,7 +1283,7 @@ export default function ChatPreview() {
             {messages.filter(m=>!chatSearch.trim() || m.content.toLowerCase().includes(chatSearch.toLowerCase())).map((message) => {
               const mine = message.sender_id === userId;
               const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
-              return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "")} onClick={() => { if (selectionMode) toggleMessageSelection(message.id); }} onTouchStart={(e) => { if (!selectionMode) startReplySwipe(e, message, "direct"); }} onTouchEnd={(e) => { if (!selectionMode) finishReplySwipe(e, message, "direct"); }}>
+              return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "")} onClick={() => { if (messageSelectionMode) toggleMessageSelection(message.id); }} onTouchStart={(e) => { if (!messageSelectionMode) startReplySwipe(e, message, "direct"); }} onTouchEnd={(e) => { if (!messageSelectionMode) finishReplySwipe(e, message, "direct"); }}>
                 <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content}</span></div>}{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
                   <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
