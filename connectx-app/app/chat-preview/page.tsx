@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, TouchEvent } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Profile = {
@@ -285,7 +285,7 @@ export default function ChatPreview() {
     if (error) { setError(error.message); return; }
     setGroupMessages((data ?? []) as GroupMessage[]);
   }
-  function startReplySwipe(event: React.TouchEvent, message: { id: string; content: string; sender_id: string }, kind: "direct" | "group") {
+  function startReplySwipe(event: TouchEvent, message: { id: string; content: string; sender_id: string }, kind: "direct" | "group") {
     const touch = event.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
   }
