@@ -63,6 +63,14 @@ const timeLabel = (value: string) =>
   new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 export default function ChatPreview() {
+  const [darkMode, setDarkMode] = useState(false);
+  useEffect(() => {
+    try { setDarkMode(localStorage.getItem("connectx-theme") === "dark"); } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("connectx-theme", darkMode ? "dark" : "light"); } catch {}
+  }, [darkMode]);
+
   const [userId, setUserId] = useState("");
   const [myProfile, setMyProfile] = useState<Profile | null>(null);
   const [profileName, setProfileName] = useState("");
@@ -937,7 +945,7 @@ export default function ChatPreview() {
   }
 
   return (
-    <main className="cx-shell">
+    <main className="cx-shell" data-theme={darkMode ? "dark" : "light"}>
       <aside className="cx-rail">
         <div className="cx-mark">✦</div>
         {(["Messages", "Status", "Friends", "Settings"] as const).map((item, index) => (
@@ -972,6 +980,8 @@ export default function ChatPreview() {
             <small className="profile-hint">3–20 characters · letters, numbers and underscores</small>
             <label className="profile-field">Bio<textarea value={profileBio} onChange={(e) => setProfileBio(e.target.value)} maxLength={160} rows={3} placeholder="A little about you…" /></label>
             <small className="profile-hint">{profileBio.length}/160 characters</small>
+            <div className="privacy-heading">APPEARANCE</div>
+            <label className="privacy-option"><span><strong>Dark mode</strong><small>Use a darker theme across ConnectX</small></span><input type="checkbox" checked={darkMode} onChange={(e) => setDarkMode(e.target.checked)} /></label>
             <div className="privacy-heading">PRIVACY</div>
             <label className="privacy-option"><span><strong>Private profile</strong><small>Privacy preference for future profile discovery controls</small></span><input type="checkbox" checked={profilePrivate} onChange={(e) => setProfilePrivate(e.target.checked)} /></label>
             <label className="privacy-option"><span><strong>Show last seen</strong><small>Allow friends to see your last active time when presence is added</small></span><input type="checkbox" checked={showLastSeen} onChange={(e) => setShowLastSeen(e.target.checked)} /></label>
@@ -1235,6 +1245,62 @@ export default function ChatPreview() {
         .section-caption { padding:14px 12px 7px;color:#77839c;font-size:9px;font-weight:800;letter-spacing:1.4px; }.request-caption { border-top:1px solid #263149;margin-top:12px; }
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
         .request-row { display:flex;align-items:center;gap:7px;padding:10px 12px;color:#dce2f2;font-size:11px; }.request-row span { flex:1; }.settings-panel { padding:24px;text-align:center; }.large-avatar { width:76px;height:76px;margin:8px auto 14px;font-size:24px;border-radius:50%;display:grid;place-items:center;background:#29334b;color:#fff; }.profile-photo-wrap { display:flex;justify-content:center;margin:8px 0 18px; }.profile-photo { width:88px;height:88px;border-radius:50%;object-fit:cover;border:2px solid #56617b; }.profile-editor { text-align:left;display:flex;flex-direction:column;gap:10px; }.profile-field { display:flex;flex-direction:column;gap:6px;text-align:left;color:#cbd5e8;font-size:12px;font-weight:600; }.profile-field input,.profile-field textarea { width:100%;box-sizing:border-box;border:1px solid #35415a;border-radius:9px;background:#111a2b;color:#f3f6ff;padding:11px;font:inherit;font-weight:400; }.profile-field input[type=file] { font-size:11px; }.profile-field textarea { resize:vertical; }.profile-hint { color:#8290aa;font-size:10px;text-align:left;margin-top:-7px; }.privacy-heading { color:#9ca9c1;font-size:10px;letter-spacing:1px;text-align:left;margin-top:12px; }.privacy-option { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px;border:1px solid #303b53;border-radius:10px;text-align:left; }.privacy-option span { display:flex;flex-direction:column;gap:4px; }.privacy-option strong { color:#e9eefb;font-size:12px; }.privacy-option small { color:#8b96ad;font-size:10px; }.privacy-option input { accent-color:#8e80ff;width:18px;height:18px; }.action-btn { padding:12px 18px;margin-top:12px; }.toast { position:fixed;z-index:5;bottom:22px;left:50%;transform:translateX(-50%);max-width:min(92vw,560px);display:flex;gap:14px;align-items:center;padding:12px 15px;border:1px solid #3b4a65;border-radius:12px;background:#1b2940;color:#dce6ff;font-size:12px;box-shadow:0 10px 40px #0008; }.toast button { border:0;background:transparent;color:white;font-size:18px; }.error-toast { border-color:#8a4250;background:#3a202c;color:#ffd2d9; }
+
+        .cx-shell[data-theme="dark"] { background:#101018;color:#eeeaf8; }
+        .cx-shell[data-theme="dark"] .cx-list,
+        .cx-shell[data-theme="dark"] .cx-conversation,
+        .cx-shell[data-theme="dark"] .cx-conversation.show-mobile { background:#101018;color:#eeeaf8; }
+        .cx-shell[data-theme="dark"] .list-head,
+        .cx-shell[data-theme="dark"] .conversation-head { background:#171722;color:#f2efff;border-color:#29283a; }
+        .cx-shell[data-theme="dark"] .cx-brand,
+        .cx-shell[data-theme="dark"] .chat-info strong,
+        .cx-shell[data-theme="dark"] .person,
+        .cx-shell[data-theme="dark"] .status-person,
+        .cx-shell[data-theme="dark"] .status-person-copy strong,
+        .cx-shell[data-theme="dark"] .status-empty strong { color:#f0edff; }
+        .cx-shell[data-theme="dark"] .list-head p,
+        .cx-shell[data-theme="dark"] .chat-info small,
+        .cx-shell[data-theme="dark"] .list-label,
+        .cx-shell[data-theme="dark"] .person small,
+        .cx-shell[data-theme="dark"] .status-person-copy small { color:#aaa4bd; }
+        .cx-shell[data-theme="dark"] .search-box,
+        .cx-shell[data-theme="dark"] .search-row .search-box,
+        .cx-shell[data-theme="dark"] .chat-row,
+        .cx-shell[data-theme="dark"] .today,
+        .cx-shell[data-theme="dark"] .composer input { background:#20202d;color:#eeeaf8;border-color:#343247; }
+        .cx-shell[data-theme="dark"] .chat-row.active,
+        .cx-shell[data-theme="dark"] .chat-row.chat-selected { background:#30294a; }
+        .cx-shell[data-theme="dark"] .messages-area { background:#11111b; }
+        .cx-shell[data-theme="dark"] .bubble { background:#29283a;color:#f0edff; }
+        .cx-shell[data-theme="dark"] .mine-bubble { background:#6548bb;color:#fff; }
+        .cx-shell[data-theme="dark"] .composer,
+        .cx-shell[data-theme="dark"] .mobile-nav { background:#171722;border-color:#302e42; }
+        .cx-shell[data-theme="dark"] .nav-item { color:#aaa4bd; }
+        .cx-shell[data-theme="dark"] .nav-item.active,
+        .cx-shell[data-theme="dark"] .back-btn { color:#b8a5ff; }
+        .cx-shell[data-theme="dark"] .nav-indicator { background:#30294a; }
+        .cx-shell[data-theme="dark"] .settings-panel { background:#101018; }
+        .cx-shell[data-theme="dark"] .profile-field,
+        .cx-shell[data-theme="dark"] .privacy-option strong { color:#eeeaf8; }
+        .cx-shell[data-theme="dark"] .profile-field input,
+        .cx-shell[data-theme="dark"] .profile-field textarea,
+        .cx-shell[data-theme="dark"] .status-compose textarea { background:#20202d;color:#eeeaf8;border-color:#39364d; }
+        .cx-shell[data-theme="dark"] .privacy-option,
+        .cx-shell[data-theme="dark"] .status-person { border-color:#302e42; }
+        .cx-shell[data-theme="dark"] .privacy-option small,
+        .cx-shell[data-theme="dark"] .profile-hint,
+        .cx-shell[data-theme="dark"] .empty-state { color:#aaa4bd; }
+        .cx-shell[data-theme="dark"] .status-topbar h2,
+        .cx-shell[data-theme="dark"] .status-compose-head { color:#f0edff; }
+        .cx-shell[data-theme="dark"] .status-topbar p,
+        .cx-shell[data-theme="dark"] .status-empty { color:#aaa4bd; }
+        .cx-shell[data-theme="dark"] .status-compose { background:#1b1a28;border-color:#39364d;color:#eeeaf8; }
+        .cx-shell[data-theme="dark"] .status-viewer-content { background:#09070d;color:white; }
+        .cx-shell[data-theme="dark"] .voice-preview { background:#29283a; }
+        .cx-shell[data-theme="dark"] .group-row,
+        .cx-shell[data-theme="dark"] .person-row,
+        .cx-shell[data-theme="dark"] .request-row { color:#eeeaf8;border-color:#302e42; }
+        .cx-shell[data-theme="dark"] .group-row { background:#20202d; }
         @media(max-width:700px) { .cx-rail { width:54px; }.cx-list { width:calc(100% - 54px);min-width:0; }.cx-conversation { display:none; }.cx-conversation.show-mobile { display:flex;position:absolute;inset:0 0 0 54px;z-index:2; }.cx-list.hide-mobile { display:none; }.back-btn { display:block; }.conversation-head { padding:0 12px;gap:9px; }.composer { padding:12px; }.messages-area { padding:20px 14px; } }
         .header-profile img { width:100%;height:100%;object-fit:cover;border-radius:50%; }
         .search-row { display:flex;gap:12px;align-items:center;padding:0 20px 0 0; }.search-row .search-box { flex:1;margin:0 0 20px 17px; }
