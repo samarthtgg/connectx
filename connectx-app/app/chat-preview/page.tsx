@@ -1175,7 +1175,7 @@ export default function ChatPreview() {
                 </button>
               ))}
             </>}
-            {selectionMode && <div className="bulk-actions"><strong>{selectedChats.length} selected</strong><button onClick={() => clearSelectedChats(false)}>Clear</button><button onClick={() => clearSelectedChats(true)}>Hide</button><button onClick={() => { setSelectionMode(false); setSelectedChats([]); }}>Cancel</button></div>}
+            {selectionMode && <div className="bulk-actions"><strong>{selectedChats.length} selected</strong><button onClick={() => {if(selectedFriend && selectedChats.includes(selectedFriend.id)){const t=messages.map(m=>(m.sender_id===userId?"You":activeName)+": "+m.content).join("\n");void navigator.clipboard.writeText(t).then(()=>setNotice("Chat copied.")).catch(()=>setError("Copy failed."));}else setNotice("Open a selected chat to copy its messages.");}}>Copy</button><button onClick={() => clearSelectedChats(false)}>Clear</button><button onClick={() => clearSelectedChats(true)}>Delete</button><button onClick={() => { setSelectionMode(false); setSelectedChats([]); }}>Cancel</button></div>}
             {friends.map((friend) => {
               return <button key={friend.id} className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""} ${selectedChats.includes(friend.id) ? "chat-selected" : ""}`}
                 onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
