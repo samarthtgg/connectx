@@ -43,7 +43,11 @@ type DirectMessage = {
   content: string;
   created_at: string;
   read_at?: string | null;
-  message_type?: "text" | "voice";
+  message_type?: "text" | "voice" | "image" | "video";
+  media_path?: string | null;
+  media_expires_at?: string | null;
+  media_expired?: boolean;
+  media_url?: string | null;
 };
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
@@ -105,6 +109,16 @@ export default function ChatPreview() {
   const statusInputRef=useRef<HTMLInputElement|null>(null);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState("");
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!attachment) { setAttachmentPreview(""); return; }
+    const previewUrl = URL.createObjectURL(attachment);
+    setAttachmentPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [attachment]);
+
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -293,13 +307,21 @@ export default function ChatPreview() {
   const loadMessages = useCallback(async (friendId: string) => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
-      .select("id,sender_id,receiver_id,content,created_at,read_at,message_type")
+      .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired")
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (messageError) throw messageError;
     const pref = chatPreferences.find((item) => item.friend_id === friendId);
     const visible = (data ?? []).filter((item) => !pref?.cleared_at || new Date(item.created_at) > new Date(pref.cleared_at));
-    setMessages(visible as DirectMessage[]);
+    const messagesWithUrls = await Promise.all(visible.map(async (item) => {
+      if (!item.media_path || item.media_expired || !item.media_expires_at || new Date(item.media_expires_at).getTime() <= Date.now()) {
+        return { ...item, media_url: null };
+      }
+      const remainingSeconds = Math.max(1, Math.floor((new Date(item.media_expires_at).getTime() - Date.now()) / 1000));
+      const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrl(item.media_path, remainingSeconds);
+      return { ...item, media_url: signed?.signedUrl ?? null };
+    }));
+    setMessages(messagesWithUrls as DirectMessage[]);
     const ids = visible.map((item) => item.id);
     if (ids.length) {
       const { data: reactionRows, error: reactionError } = await supabase.from("message_reactions")
@@ -327,7 +349,15 @@ export default function ChatPreview() {
           (row.sender_id === userId && row.receiver_id === selectedFriend.id) ||
           (row.sender_id === selectedFriend.id && row.receiver_id === userId);
         if (belongsToChat) {
-          setMessages((old) => old.some((item) => item.id === row.id) ? old : [...old, row]);
+          void (async () => {
+            let incoming = row;
+            if (row.media_path && row.media_expires_at && new Date(row.media_expires_at).getTime() > Date.now()) {
+              const remainingSeconds = Math.max(1, Math.floor((new Date(row.media_expires_at).getTime() - Date.now()) / 1000));
+              const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrl(row.media_path, remainingSeconds);
+              incoming = { ...row, media_url: signed?.signedUrl ?? null };
+            }
+            setMessages((old) => old.some((item) => item.id === incoming.id) ? old : [...old, incoming]);
+          })();
         }
       })
       .subscribe();
@@ -516,39 +546,63 @@ export default function ChatPreview() {
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
-    if (!content || !selectedFriend || !userId || busy) return;
+    const file = attachment;
+    if ((!content && !file) || !selectedFriend || !userId || busy) return;
     setBusy(true); setError("");
+    let uploadedPath: string | null = null;
     try {
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (authError) throw authError;
       if (!authData.user || authData.user.id !== userId) {
         throw new Error("Your active sign-in session does not match the account loaded by ConnectX. Sign out and sign in again.");
       }
-      const { data, error: insertError } = await supabase.from("messages")
-        .insert({ sender_id: authData.user.id, receiver_id: selectedFriend.id, content, message_type: "text" })
-        .select("id,sender_id,receiver_id,content,created_at,read_at,message_type")
-        .single();
-      if (insertError) {
-        console.error("ConnectX message insert failed", {
-          code: insertError.code,
-          message: insertError.message,
-          details: insertError.details,
-          hint: insertError.hint,
+
+      let insertPayload: Record<string, unknown> = {
+        sender_id: authData.user.id,
+        receiver_id: selectedFriend.id,
+        content,
+        message_type: "text",
+      };
+      if (file) {
+        const allowedTypes = ["image/jpeg", "image/png", "image/webp", "video/mp4"];
+        if (!allowedTypes.includes(file.type)) throw new Error("Choose a JPG, PNG, WEBP image or MP4 video.");
+        if (file.size > 20 * 1024 * 1024) throw new Error("The maximum photo/video size is 20 MB.");
+        const extension = file.name.split(".").pop()?.toLowerCase() || (file.type === "video/mp4" ? "mp4" : "jpg");
+        uploadedPath = `${userId}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from("connectx-temporary-chat-media")
+          .upload(uploadedPath, file, { contentType: file.type, upsert: false });
+        if (uploadError) throw uploadError;
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        insertPayload = {
           sender_id: authData.user.id,
           receiver_id: selectedFriend.id,
-        });
-        setError([
-          insertError.message,
-          insertError.details,
-          insertError.hint,
-          insertError.code ? `Code: ${insertError.code}` : "",
-        ].filter(Boolean).join(" — "));
-      } else if (data) {
-        setMessages((old) => old.some((item) => item.id === data.id) ? old : [...old, data as DirectMessage]);
+          content: content || file.name,
+          message_type: file.type.startsWith("video/") ? "video" : "image",
+          media_path: uploadedPath,
+          media_expires_at: expiresAt,
+          media_expired: false,
+        };
+      }
+
+      const { data, error: insertError } = await supabase.from("messages").insert(insertPayload)
+        .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired")
+        .single();
+      if (insertError) throw insertError;
+      if (data) {
+        let sentMessage = data as DirectMessage;
+        if (sentMessage.media_path && sentMessage.media_expires_at) {
+          const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media")
+            .createSignedUrl(sentMessage.media_path, Math.max(1, Math.floor((new Date(sentMessage.media_expires_at).getTime() - Date.now()) / 1000)));
+          sentMessage = { ...sentMessage, media_url: signed?.signedUrl ?? null };
+        }
+        setMessages((old) => old.some((item) => item.id === sentMessage.id) ? old : [...old, sentMessage]);
         setDraft("");
+        setAttachment(null);
+        if (attachmentInputRef.current) attachmentInputRef.current.value = "";
         if (typingChannel.current) void typingChannel.current.send({ type: "broadcast", event: "typing", payload: { typing: false } });
       }
     } catch (reason) {
+      if (uploadedPath) await supabase.storage.from("connectx-temporary-chat-media").remove([uploadedPath]);
       setError(reason instanceof Error ? reason.message : "Could not send message.");
     } finally {
       setBusy(false);
@@ -1059,8 +1113,9 @@ export default function ChatPreview() {
             {typing && <div className="typing-indicator"><span></span><span></span><span></span> {activeName} is typing</div>}
             {messages.map((message) => {
               const mine = message.sender_id === userId;
+              const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
               return <div key={message.id} className={mine ? "message-line mine" : "message-line"}>
-                <div className={mine ? "bubble mine-bubble" : "bubble"}>{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : <p>{message.content}</p>}
+                <div className={mine ? "bubble mine-bubble" : "bubble"}>{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
                   <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
                   {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
@@ -1071,11 +1126,24 @@ export default function ChatPreview() {
             {messages.length === 0 && <p className="empty">No messages yet. Say hello!</p>}
           </div>
           <form className="composer" onSubmit={sendMessage}>
-            <button type="button" className="mic-btn" disabled={busy||!!voiceBlob} onClick={recording?stopVoiceRecording:startVoiceRecording} aria-label={recording?"Stop recording":"Record voice message"}>{recording?"■":"🎙"}</button>
-            <input value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); }} placeholder="Write a message…" maxLength={5000} />
+            <input ref={attachmentInputRef} className="attachment-input" type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              if (!file) return;
+              if (file.size > 20 * 1024 * 1024) { setError("The maximum photo/video size is 20 MB."); event.target.value = ""; return; }
+              if (!["image/jpeg", "image/png", "image/webp", "video/mp4"].includes(file.type)) { setError("Choose a JPG, PNG, WEBP image or MP4 video."); event.target.value = ""; return; }
+              setError(""); setAttachment(file);
+            }} />
+            <button type="button" className="attach-btn" disabled={busy || !!voiceBlob} onClick={() => attachmentInputRef.current?.click()} aria-label="Attach photo or video">＋</button>
+            <button type="button" className="mic-btn" disabled={busy||!!voiceBlob||!!attachment} onClick={recording?stopVoiceRecording:startVoiceRecording} aria-label={recording?"Stop recording":"Record voice message"}>{recording?"■":"🎙"}</button>
+            <input value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); }} placeholder={attachment ? "Add a caption (optional)…" : "Write a message…"} maxLength={5000} />
+            {attachment && <div className="attachment-preview">
+              {attachment.type.startsWith("image/") ? <img src={attachmentPreview} alt="Selected attachment preview" /> : <video src={attachmentPreview} muted playsInline />}
+              <span>{attachment.name}</span>
+              <button type="button" aria-label="Remove attachment" onClick={() => { setAttachment(null); if (attachmentInputRef.current) attachmentInputRef.current.value = ""; }}>×</button>
+            </div>}
             {recording && <span className="recording-label">Recording…</span>}
             {voiceBlob && <div className="voice-preview"><audio controls src={voicePreview} /><button type="button" onClick={()=>{setVoiceBlob(null);URL.revokeObjectURL(voicePreview);setVoicePreview("");}}>×</button><button type="button" disabled={busy} onClick={sendVoiceMessage}>Send voice</button></div>}
-            <button className="send" disabled={!draft.trim() || busy} aria-label="Send message">{busy ? "…" : "➤"}</button>
+            <button type="submit" className="send" disabled={(!draft.trim() && !attachment) || busy} aria-label="Send message">{busy ? "…" : "➤"}</button>
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
       </section>
@@ -1152,7 +1220,7 @@ export default function ChatPreview() {
         .person { flex:1; }.person small { display:block;color:#58c69c;font-size:10px;margin-top:5px; }.messages-area { flex:1;overflow:auto;padding:25px clamp(16px,5vw,70px);display:flex;flex-direction:column;gap:14px; }
         .today { align-self:center;padding:6px 12px;border-radius:20px;background:#182237;color:#8994ad;font-size:9px;letter-spacing:1px;margin-bottom:12px; }
         .message-line { display:flex;width:100%;justify-content:flex-start; }.message-line.mine { justify-content:flex-end; }.bubble { max-width:min(75%,440px);padding:11px 14px 8px;border-radius:16px 16px 16px 5px;background:#202b40; }.mine-bubble { background:#6858d8;border-radius:16px 16px 5px 16px; }.bubble p { margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.bubble small { display:block;text-align:right;color:#d2ccef;font-size:9px;margin-top:5px; }
-        .composer { display:flex;align-items:center;gap:10px;padding:15px 20px;border-top:1px solid #232d42;background:#121a2b; }.composer input { padding:14px;border:1px solid #37425c;border-radius:12px;background:#0c1424;font-size:13px; }.send,.mini-btn,.action-btn { border:0;border-radius:10px;background:#7868eb;color:white;font-weight:700;cursor:pointer; }.send { width:42px;height:42px;flex-shrink:0;font-size:17px; }.send:disabled,.mini-btn:disabled { opacity:.4;cursor:not-allowed; }
+        .composer { display:flex;align-items:center;gap:10px;padding:15px 20px;border-top:1px solid #232d42;background:#121a2b; }.composer input { padding:14px;border:1px solid #37425c;border-radius:12px;background:#0c1424;font-size:13px; }.attachment-input { display:none; }.attach-btn { flex:0 0 40px;height:40px;border:1px solid #56617b;border-radius:12px;background:transparent;color:#b8aaff;font-size:28px;line-height:1;cursor:pointer; }.attachment-preview { display:flex;align-items:center;gap:8px;flex-basis:100%;min-width:0;padding:7px 10px;border:1px solid #e7e1ff;border-radius:12px;background:#f4f2ff;color:#514774;font-size:11px; }.attachment-preview img,.attachment-preview video { width:42px;height:42px;flex:0 0 42px;border-radius:8px;object-fit:cover;background:#ddd; }.attachment-preview span { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.attachment-preview button { border:0;background:transparent;color:#7054c8;font-size:22px;cursor:pointer; }.chat-media { display:block;max-width:min(260px,65vw);max-height:320px;border-radius:12px;object-fit:contain; }.expired-media { color:inherit;opacity:.75;font-size:12px; }.send,.mini-btn,.action-btn { border:0;border-radius:10px;background:#7868eb;color:white;font-weight:700;cursor:pointer; }.send { width:42px;height:42px;flex-shrink:0;font-size:17px; }.send:disabled,.mini-btn:disabled { opacity:.4;cursor:not-allowed; }
         .call-actions { display:flex;gap:8px;margin-left:auto; }.call-icon { width:36px;height:36px;border:1px solid #3b4560;border-radius:11px;background:#202a40;color:#d9d2ff;font-size:17px;cursor:pointer; }.call-icon:disabled { opacity:.4;cursor:not-allowed; }
         .call-overlay { position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:18px;background:#050914dd;backdrop-filter:blur(8px); }.incoming-card,.active-call-card { width:min(100%,520px);border:1px solid #3a4562;border-radius:22px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;overflow:hidden; }.incoming-card { padding:34px 24px;text-align:center; }.call-avatar { width:82px;height:82px;margin:10px auto 20px;display:grid;place-items:center;border-radius:50%;background:#6257b5;color:white;font-size:36px; }.incoming-card h2 { margin:0;font-size:20px; }.incoming-card p { color:#9ca8c0;font-size:13px; }.incoming-actions,.call-controls { display:flex;justify-content:center;gap:12px;margin-top:26px; }.incoming-actions button,.call-controls button { padding:12px 18px;border:0;border-radius:12px;background:#303b53;color:#fff;font-weight:700; }.accept-call { background:#23875e!important; }.decline-call,.hangup { background:#b83c55!important; }.active-call-card { padding:18px; }.call-topline { display:flex;justify-content:space-between;gap:12px;align-items:center;padding:4px 4px 14px;font-size:13px; }.call-topline span { color:#9da9c0;font-size:11px; }.video-stage { position:relative;height:min(58vh,420px);min-height:230px;border-radius:15px;overflow:hidden;background:#070b14; }.remote-video { width:100%;height:100%;object-fit:cover; }.local-video { position:absolute;right:12px;bottom:12px;width:26%;max-height:35%;aspect-ratio:3/4;object-fit:cover;border:2px solid #fff;border-radius:12px;background:#202a40; }.video-placeholder { position:absolute;inset:0;display:grid;place-items:center;color:#aab5ca;font-size:12px;pointer-events:none; }.audio-stage { min-height:260px;display:grid;align-content:center;text-align:center;color:#aab5ca; }.audio-stage .call-avatar { margin-bottom:4px; }.audio-stage p { font-size:12px; }.call-controls { margin:18px 0 4px;flex-wrap:wrap; }.call-controls .control-on { background:#6557c7; }
         .read-ticks { color:#54b9ff;font-weight:900;letter-spacing:-3px;padding-right:3px; }.reaction-chip { margin:6px 4px 0 0;padding:4px 7px;border:1px solid #56617b;border-radius:12px;background:#27344d;color:white;font-size:11px; }.reaction-picker { display:flex;gap:4px;margin-top:7px;padding:5px;background:#101a2c;border:1px solid #45516d;border-radius:20px;width:max-content; }.reaction-picker button,.react-trigger { border:0;background:transparent;color:white;font-size:17px;cursor:pointer; }.react-trigger { display:block;margin-left:auto;font-size:13px;color:#b8c3d9; }.typing-indicator { align-self:flex-start;color:#aeb9d0;font-size:11px;display:flex;align-items:center;gap:4px; }.typing-indicator span { width:5px;height:5px;border-radius:50%;background:#a99aff;animation:typingPulse .8s infinite alternate; }.typing-indicator span:nth-child(2) { animation-delay:.2s; }.typing-indicator span:nth-child(3) { animation-delay:.4s; } @keyframes typingPulse { to { opacity:.25;transform:translateY(-3px); } }.bulk-actions { display:flex;align-items:center;gap:6px;padding:8px;position:sticky;top:0;background:#121a2b;z-index:2; }.bulk-actions strong { flex:1;font-size:11px; }.bulk-actions button { border:1px solid #46516b;border-radius:8px;padding:6px;background:#202a40;color:#fff;font-size:10px; }.chat-row.chat-selected { outline:2px solid #8e80ff;background:#28264a; }
