@@ -382,8 +382,8 @@ export default function ChatPreview() {
     const dy = touch.clientY - start.y;
     if (dx > 64 && Math.abs(dx) > Math.abs(dy) * 1.25) {
       setReplyTarget({ id: message.id, content: message.content, sender_id: message.sender_id, kind });
-      if (kind === "direct") setTimeout(() => document.querySelector<HTMLInputElement>(".composer input:not(.attachment-input)")?.focus(), 0);
-      else setTimeout(() => document.querySelector<HTMLInputElement>(".composer input")?.focus(), 0);
+      if (kind === "direct") setTimeout(() => document.querySelector<HTMLTextAreaElement>(".composer textarea.composer-textarea")?.focus(), 0);
+      else setTimeout(() => document.querySelector<HTMLTextAreaElement>(".composer textarea.composer-textarea")?.focus(), 0);
     }
   }
 
@@ -1271,7 +1271,7 @@ export default function ChatPreview() {
         {selectedGroup && tab === "Messages" ? <>
           <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><span className="avatar">♧</span><div className="person"><strong>{selectedGroup.name}</strong><small>Group conversation</small></div></header>
           <div className="messages-area" ref={messagesAreaRef}><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, m, "group")} onTouchEnd={(e) => finishReplySwipe(e, m, "group")}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}>{m.reply_to_content && <div className="reply-quote"><strong>{m.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{m.reply_to_content}</span></div>}<p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
-          <form className="composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} placeholder="Message the group…" maxLength={5000} /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
+          <form className="composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<textarea className="composer-textarea" rows={1} value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} placeholder="Message the group…" maxLength={5000} aria-label="Group message" /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
         </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
@@ -1333,7 +1333,7 @@ export default function ChatPreview() {
               }} />
             </label>
             <button type="button" className="mic-btn" disabled={busy||!!voiceBlob||!!attachment} onClick={recording?stopVoiceRecording:startVoiceRecording} aria-label={recording?"Stop recording":"Record voice message"}>{recording?"■":"🎙"}</button>
-            <input value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); }} placeholder={attachment ? "Add a caption (optional)…" : "Write a message…"} maxLength={5000} />
+            <textarea className="composer-textarea" rows={1} value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); }} placeholder={attachment ? "Add a caption (optional)…" : "Write a message…"} maxLength={5000} aria-label="Message" />
             {attachment && <div className="attachment-preview">
               {attachment.type.startsWith("image/") ? <img src={attachmentPreview} alt="Selected attachment preview" /> : <video src={attachmentPreview} muted playsInline />}
               <span>{attachment.name}</span>
@@ -1454,7 +1454,7 @@ export default function ChatPreview() {
         .list-head p { margin:5px 0 0;color:#8490a9;font-size:12px; }
         .icon-btn { width:36px;height:36px;border:1px solid #39445d;border-radius:11px;background:#1b2540;color:#c9bfff;font-size:22px;cursor:pointer; }
         .search-box { margin:0 17px 20px;padding:11px 12px;display:flex;gap:9px;border-radius:10px;background:#0c1424;color:#8b96ad; }
-        .search-box input,.composer input { width:100%;min-width:0;border:0;outline:0;background:transparent;color:#fff;font-size:12px; }
+        .search-box input,.composer input,.composer textarea { width:100%;min-width:0;border:0;outline:0;background:transparent;color:#fff;font:inherit;font-size:12px; }\n        .composer .composer-textarea { flex:1;min-height:40px;max-height:120px;resize:none;overflow-y:auto;padding:10px 12px;border-radius:20px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere; }
         .list-label { display:flex;justify-content:space-between;padding:0 21px 10px;color:#7e89a2;font-size:10px;font-weight:800;letter-spacing:1.5px; }
         .cx-chats { flex:1;overflow:auto;padding:0 9px 16px; }
         .chat-row,.person-row { width:100%;display:flex;align-items:center;gap:11px;padding:12px;border:0;border-radius:13px;background:transparent;color:inherit;text-align:left;margin-bottom:4px; }
@@ -1509,7 +1509,7 @@ export default function ChatPreview() {
         .cx-shell[data-theme="dark"] .search-row .search-box,
         .cx-shell[data-theme="dark"] .chat-row,
         .cx-shell[data-theme="dark"] .today,
-        .cx-shell[data-theme="dark"] .composer input { background:#20202d;color:#eeeaf8;border-color:#343247; }
+        .cx-shell[data-theme="dark"] .composer input,.cx-shell[data-theme="dark"] .composer textarea { background:#20202d;color:#eeeaf8;border-color:#343247; }
         .cx-shell[data-theme="dark"] .chat-row.active,
         .cx-shell[data-theme="dark"] .chat-row.chat-selected { background:#30294a; }
         .cx-shell[data-theme="dark"] .messages-area { background:#11111b; }
@@ -1582,7 +1582,7 @@ export default function ChatPreview() {
           .conversation-head { padding:0 14px;gap:9px;background:#fff;border-bottom:1px solid #eeeaff;color:#211052; }.person small { color:#43b88e; }
           .messages-area { padding:20px 14px;background:#fff; }.today { background:#f1efff;color:#756b9b; }
           .bubble { background:#f0edff;color:#241653; }.mine-bubble { background:#7659dc;color:#fff; }
-          .composer { padding:12px;background:#fff;border-top:1px solid #eeeaff; }.composer input { background:#f4f2ff;color:#241653;border:1px solid #e7e1ff; }
+          .composer { padding:12px;background:#fff;border-top:1px solid #eeeaff; }.composer input,.composer textarea { background:#f4f2ff;color:#241653;border:1px solid #e7e1ff; }
           .settings-panel { padding:16px 28px 30px; }.profile-field { color:#514774; }.profile-field input,.profile-field textarea { background:#fff;color:#241653;border-color:#ded9ef; }.privacy-option { border-color:#e8e3f5; }.privacy-option strong { color:#241653; }.privacy-option small { color:#777092; }
           .empty-state { color:#777092; }
           .status-compose { margin:0 4px 12px; }.status-card { margin:10px 4px; }
