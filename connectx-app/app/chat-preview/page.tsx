@@ -38,6 +38,9 @@ type IceCandidateRow = {
 };
 type DirectMessage = {
   id: string;
+  reply_to_id?: string | null;
+  reply_to_content?: string | null;
+  reply_to_sender_id?: string | null;
   sender_id: string;
   receiver_id: string;
   content: string;
@@ -53,7 +56,7 @@ type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null };
 type ChatGroup = { id: string; name: string; description: string | null; created_by: string; created_at: string };
-type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean };
+type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean; reply_to_id?: string | null; reply_to_content?: string | null; reply_to_sender_id?: string | null };
 
 const displayName = (profile: Profile) =>
   profile.full_name?.trim() || profile.username || "ConnectX user";
@@ -98,6 +101,8 @@ export default function ChatPreview() {
   const [selectedGroup, setSelectedGroup] = useState<ChatGroup | null>(null);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [groupDraft, setGroupDraft] = useState("");
+  const [replyTarget, setReplyTarget] = useState<{ id: string; content: string; sender_id: string; kind: "direct" | "group" } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDescription, setNewGroupDescription] = useState("");
@@ -276,19 +281,37 @@ export default function ChatPreview() {
   }
   async function openGroup(group: ChatGroup) {
     setSelectedGroup(group); setSelectedFriend(null); setShowMobileChat(true); setTab("Messages"); setError("");
-    const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone").eq("group_id", group.id).order("created_at", { ascending: true });
+    const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").eq("group_id", group.id).order("created_at", { ascending: true });
     if (error) { setError(error.message); return; }
     setGroupMessages((data ?? []) as GroupMessage[]);
   }
+  function startReplySwipe(event: React.TouchEvent, message: { id: string; content: string; sender_id: string }, kind: "direct" | "group") {
+    const touch = event.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }
+  function finishReplySwipe(event: React.TouchEvent, message: { id: string; content: string; sender_id: string }, kind: "direct" | "group") {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start || !event.changedTouches.length) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (dx > 64 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+      setReplyTarget({ id: message.id, content: message.content, sender_id: message.sender_id, kind });
+      if (kind === "direct") setTimeout(() => document.querySelector<HTMLInputElement>(".composer input:not(.attachment-input)")?.focus(), 0);
+      else setTimeout(() => document.querySelector<HTMLInputElement>(".composer input")?.focus(), 0);
+    }
+  }
+
   async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = groupDraft.trim();
     if (!content || !selectedGroup || !userId || busy) return;
     setBusy(true); setError("");
     try {
-      const { data, error } = await supabase.from("chat_group_messages").insert({ group_id: selectedGroup.id, sender_id: userId, content }).select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone").single();
+      const { data, error } = await supabase.from("chat_group_messages").insert({ group_id: selectedGroup.id, sender_id: userId, content, reply_to_id: replyTarget?.kind === "group" ? replyTarget.id : null, reply_to_content: replyTarget?.kind === "group" ? replyTarget.content : null, reply_to_sender_id: replyTarget?.kind === "group" ? replyTarget.sender_id : null }).select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if (error) throw error;
-      setGroupMessages((old) => [...old, data as GroupMessage]); setGroupDraft("");
+      setGroupMessages((old) => [...old, data as GroupMessage]); setGroupDraft(""); setReplyTarget(null);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not send group message."); }
     finally { setBusy(false); }
   }
@@ -315,7 +338,7 @@ export default function ChatPreview() {
   const loadMessages = useCallback(async (friendId: string) => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
-      .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired")
+      .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired,reply_to_id,reply_to_content,reply_to_sender_id")
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (messageError) throw messageError;
@@ -550,7 +573,7 @@ export default function ChatPreview() {
       const url=supabase.storage.from("connectx-voice-notes").getPublicUrl(key).data.publicUrl;
       const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice"}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type").single();
       if(insertError)throw insertError;
-      setMessages(old=>[...old,data as DirectMessage]);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");
+      setMessages(old=>[...old,data as DirectMessage]);setReplyTarget(null);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");
     }catch(e){setError(e instanceof Error?e.message:"Could not send voice message.");}
     finally{setBusy(false);}
   }
@@ -572,6 +595,9 @@ export default function ChatPreview() {
 
       let insertPayload: Record<string, unknown> = {
         sender_id: authData.user.id,
+        reply_to_id: replyTarget?.kind === "direct" ? replyTarget.id : null,
+        reply_to_content: replyTarget?.kind === "direct" ? replyTarget.content : null,
+        reply_to_sender_id: replyTarget?.kind === "direct" ? replyTarget.sender_id : null,
         receiver_id: selectedFriend.id,
         content,
         message_type: "text",
@@ -610,6 +636,7 @@ export default function ChatPreview() {
         }
         setMessages((old) => old.some((item) => item.id === sentMessage.id) ? old : [...old, sentMessage]);
         setDraft("");
+        setReplyTarget(null);
         setAttachment(null);
         if (attachmentInputRef.current) attachmentInputRef.current.value = "";
         if (typingChannel.current) void typingChannel.current.send({ type: "broadcast", event: "typing", payload: { typing: false } });
@@ -1109,8 +1136,8 @@ export default function ChatPreview() {
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
         {selectedGroup && tab === "Messages" ? <>
           <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><span className="avatar">♧</span><div className="person"><strong>{selectedGroup.name}</strong><small>Group conversation</small></div></header>
-          <div className="messages-area"><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}><p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
-          <form className="composer" onSubmit={sendGroupMessage}><input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} placeholder="Message the group…" maxLength={5000} /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
+          <div className="messages-area"><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, m, "group")} onTouchEnd={(e) => finishReplySwipe(e, m, "group")}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}>{m.reply_to_content && <div className="reply-quote"><strong>{m.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{m.reply_to_content}</span></div>}<p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
+          <form className="composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} placeholder="Message the group…" maxLength={5000} /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
         </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
@@ -1129,8 +1156,8 @@ export default function ChatPreview() {
             {messages.map((message) => {
               const mine = message.sender_id === userId;
               const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
-              return <div key={message.id} className={mine ? "message-line mine" : "message-line"}>
-                <div className={mine ? "bubble mine-bubble" : "bubble"}>{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
+              return <div key={message.id} className={mine ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, message, "direct")} onTouchEnd={(e) => finishReplySwipe(e, message, "direct")}>
+                <div className={mine ? "bubble mine-bubble" : "bubble"}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content}</span></div>}{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
                   <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
                   {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
@@ -1141,6 +1168,7 @@ export default function ChatPreview() {
             {messages.length === 0 && <p className="empty">No messages yet. Say hello!</p>}
           </div>
           <form className="composer" onSubmit={sendMessage}>
+            {replyTarget?.kind === "direct" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : activeName}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}
             <label className="attach-btn" aria-label="Attach photo or video">＋
               <input ref={attachmentInputRef} className="attachment-input" type="file" accept="image/jpeg,image/png,image/webp,video/mp4" disabled={!!voiceBlob} onChange={(event) => {
                 const file = event.target.files?.[0] ?? null;
@@ -1235,7 +1263,7 @@ export default function ChatPreview() {
         .cx-conversation { flex:1;min-width:0;display:flex;flex-direction:column;background:#0d1423; }.conversation-head { height:78px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid #232d42;background:#121a2b; }
         .person { flex:1; }.person small { display:block;color:#58c69c;font-size:10px;margin-top:5px; }.messages-area { flex:1;overflow:auto;padding:25px clamp(16px,5vw,70px);display:flex;flex-direction:column;gap:14px; }
         .today { align-self:center;padding:6px 12px;border-radius:20px;background:#182237;color:#8994ad;font-size:9px;letter-spacing:1px;margin-bottom:12px; }
-        .message-line { display:flex;width:100%;justify-content:flex-start; }.message-line.mine { justify-content:flex-end; }.bubble { max-width:min(75%,440px);padding:11px 14px 8px;border-radius:16px 16px 16px 5px;background:#202b40; }.mine-bubble { background:#6858d8;border-radius:16px 16px 5px 16px; }.bubble p { margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.bubble small { display:block;text-align:right;color:#d2ccef;font-size:9px;margin-top:5px; }
+        .message-line { display:flex;width:100%;justify-content:flex-start; }.message-line.mine { justify-content:flex-end; }.reply-compose { display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1 0 100%;padding:8px 11px;border-left:3px solid #8068e8;border-radius:8px;background:#f1efff;color:#30245a; }.reply-compose span { display:flex;min-width:0;flex-direction:column;gap:3px; }.reply-compose strong { font-size:11px; }.reply-compose small { overflow:hidden;color:#81799f;font-size:11px;text-overflow:ellipsis;white-space:nowrap; }.reply-compose button { border:0;background:transparent;color:inherit;font-size:22px; }.reply-quote { display:flex;flex-direction:column;gap:3px;margin-bottom:7px;padding:6px 8px;border-left:3px solid #a18af0;border-radius:6px;background:#ffffff25; }.reply-quote strong { font-size:10px;opacity:.85; }.reply-quote span { overflow:hidden;font-size:11px;text-overflow:ellipsis;white-space:nowrap;max-width:230px; }.message-line { touch-action:pan-y; }.bubble { max-width:min(75%,440px);padding:11px 14px 8px;border-radius:16px 16px 16px 5px;background:#202b40; }.mine-bubble { background:#6858d8;border-radius:16px 16px 5px 16px; }.bubble p { margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere; }.bubble small { display:block;text-align:right;color:#d2ccef;font-size:9px;margin-top:5px; }
         .composer { display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:15px 20px;border-top:1px solid #232d42;background:#121a2b;position:relative; }.composer > input:not([type="file"]) { flex:1 1 120px;min-width:0;padding:14px;border:1px solid #37425c;border-radius:12px;background:#0c1424;font-size:13px; }.composer .attach-btn { position:relative;overflow:hidden;display:grid;place-items:center; }.composer .attachment-input { position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer; }.attach-btn { flex:0 0 40px;height:40px;border:1px solid #56617b;border-radius:12px;background:transparent;color:#b8aaff;font-size:28px;line-height:1;cursor:pointer; }.attachment-preview { display:flex;align-items:center;gap:8px;flex-basis:100%;min-width:0;padding:7px 10px;border:1px solid #e7e1ff;border-radius:12px;background:#f4f2ff;color:#514774;font-size:11px; }.attachment-preview img,.attachment-preview video { width:42px;height:42px;flex:0 0 42px;border-radius:8px;object-fit:cover;background:#ddd; }.attachment-preview span { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.attachment-preview button { border:0;background:transparent;color:#7054c8;font-size:22px;cursor:pointer; }.chat-media { display:block;max-width:min(260px,65vw);max-height:320px;border-radius:12px;object-fit:contain; }.expired-media { color:inherit;opacity:.75;font-size:12px; }.send,.mini-btn,.action-btn { border:0;border-radius:10px;background:#7868eb;color:white;font-weight:700;cursor:pointer; }.composer .send { position:relative;z-index:5;display:grid;place-items:center;width:46px;height:46px;min-width:46px;flex:0 0 46px;margin:0;padding:0;border:0;border-radius:12px;background:#7868eb;color:#fff;font-size:19px;font-weight:800;cursor:pointer;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent; }.send:disabled,.mini-btn:disabled { opacity:.4;cursor:not-allowed; }
         .call-actions { display:flex;gap:8px;margin-left:auto; }.call-icon { width:36px;height:36px;border:1px solid #3b4560;border-radius:11px;background:#202a40;color:#d9d2ff;font-size:17px;cursor:pointer; }.call-icon:disabled { opacity:.4;cursor:not-allowed; }
         .call-overlay { position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:18px;background:#050914dd;backdrop-filter:blur(8px); }.incoming-card,.active-call-card { width:min(100%,520px);border:1px solid #3a4562;border-radius:22px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;overflow:hidden; }.incoming-card { padding:34px 24px;text-align:center; }.call-avatar { width:82px;height:82px;margin:10px auto 20px;display:grid;place-items:center;border-radius:50%;background:#6257b5;color:white;font-size:36px; }.incoming-card h2 { margin:0;font-size:20px; }.incoming-card p { color:#9ca8c0;font-size:13px; }.incoming-actions,.call-controls { display:flex;justify-content:center;gap:12px;margin-top:26px; }.incoming-actions button,.call-controls button { padding:12px 18px;border:0;border-radius:12px;background:#303b53;color:#fff;font-weight:700; }.accept-call { background:#23875e!important; }.decline-call,.hangup { background:#b83c55!important; }.active-call-card { padding:18px; }.call-topline { display:flex;justify-content:space-between;gap:12px;align-items:center;padding:4px 4px 14px;font-size:13px; }.call-topline span { color:#9da9c0;font-size:11px; }.video-stage { position:relative;height:min(58vh,420px);min-height:230px;border-radius:15px;overflow:hidden;background:#070b14; }.remote-video { width:100%;height:100%;object-fit:cover; }.local-video { position:absolute;right:12px;bottom:12px;width:26%;max-height:35%;aspect-ratio:3/4;object-fit:cover;border:2px solid #fff;border-radius:12px;background:#202a40; }.video-placeholder { position:absolute;inset:0;display:grid;place-items:center;color:#aab5ca;font-size:12px;pointer-events:none; }.audio-stage { min-height:260px;display:grid;align-content:center;text-align:center;color:#aab5ca; }.audio-stage .call-avatar { margin-bottom:4px; }.audio-stage p { font-size:12px; }.call-controls { margin:18px 0 4px;flex-wrap:wrap; }.call-controls .control-on { background:#6557c7; }
