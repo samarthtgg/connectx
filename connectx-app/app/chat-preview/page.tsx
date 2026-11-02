@@ -372,6 +372,10 @@ export default function ChatPreview() {
       setSelectedChats((old) => old.includes(friend.id) ? old.filter((id) => id !== friend.id) : [...old, friend.id]);
       return;
     }
+    // Switch the active conversation type explicitly. Without clearing the
+    // group selection, the group-render branch takes precedence over a friend.
+    setSelectedGroup(null);
+    setGroupMessages([]);
     setSelectedFriend(friend);
     setShowMobileChat(true);
     setTab("Messages");
