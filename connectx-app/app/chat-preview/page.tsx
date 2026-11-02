@@ -103,6 +103,7 @@ export default function ChatPreview() {
   const [groupDraft, setGroupDraft] = useState("");
   const [replyTarget, setReplyTarget] = useState<{ id: string; content: string; sender_id: string; kind: "direct" | "group" } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const messagesAreaRef = useRef<HTMLDivElement>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDescription, setNewGroupDescription] = useState("");
@@ -324,6 +325,12 @@ export default function ChatPreview() {
       }).subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [selectedGroup?.id, userId]);
+
+  useEffect(() => {
+    const area = messagesAreaRef.current;
+    if (!area) return;
+    area.scrollTop = area.scrollHeight;
+  }, [messages, groupMessages, selectedFriend?.id, selectedGroup?.id, showMobileChat]);
 
   const loadChatPreferences = useCallback(async () => {
     if (!userId) return;
@@ -1139,7 +1146,7 @@ export default function ChatPreview() {
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
         {selectedGroup && tab === "Messages" ? <>
           <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><span className="avatar">♧</span><div className="person"><strong>{selectedGroup.name}</strong><small>Group conversation</small></div></header>
-          <div className="messages-area"><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, m, "group")} onTouchEnd={(e) => finishReplySwipe(e, m, "group")}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}>{m.reply_to_content && <div className="reply-quote"><strong>{m.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{m.reply_to_content}</span></div>}<p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
+          <div className="messages-area" ref={messagesAreaRef}><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, m, "group")} onTouchEnd={(e) => finishReplySwipe(e, m, "group")}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}>{m.reply_to_content && <div className="reply-quote"><strong>{m.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{m.reply_to_content}</span></div>}<p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
           <form className="composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} placeholder="Message the group…" maxLength={5000} /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
         </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
@@ -1153,7 +1160,7 @@ export default function ChatPreview() {
                 disabled={!!activeCall || !!incomingCall} onClick={() => startCall("video")}>▣</button>
             </div>
           </header>
-          <div className="messages-area">
+          <div className="messages-area" ref={messagesAreaRef}>
             <div className="today">DIRECT MESSAGES</div>
             {typing && <div className="typing-indicator"><span></span><span></span><span></span> {activeName} is typing</div>}
             {messages.map((message) => {
