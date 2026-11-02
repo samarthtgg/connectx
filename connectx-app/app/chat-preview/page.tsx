@@ -547,7 +547,8 @@ export default function ChatPreview() {
     event?.preventDefault();
     const content = draft.trim();
     const file = attachment;
-    if ((!content && !file) || !selectedFriend || !userId || busy) return;
+    if (!selectedFriend || !userId || busy) return;
+    if (!content && !file) { setError("Choose a photo or enter a message before sending."); return; }
     setBusy(true); setError("");
     let uploadedPath: string | null = null;
     try {
@@ -1144,7 +1145,7 @@ export default function ChatPreview() {
             </div>}
             {recording && <span className="recording-label">Recording…</span>}
             {voiceBlob && <div className="voice-preview"><audio controls src={voicePreview} /><button type="button" onClick={()=>{setVoiceBlob(null);URL.revokeObjectURL(voicePreview);setVoicePreview("");}}>×</button><button type="button" disabled={busy} onClick={sendVoiceMessage}>Send voice</button></div>}
-            <button type="button" className="send" disabled={!draft.trim() && !attachment} onClick={() => void sendMessage()} aria-label="Send message">{busy ? "…" : "➤"}</button>
+            <button type="button" className="send" disabled={busy || !selectedFriend || !userId} onClick={() => void sendMessage()} aria-label="Send message">{busy ? "…" : "➤"}</button>
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
       </section>
