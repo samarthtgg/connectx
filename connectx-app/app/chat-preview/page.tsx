@@ -67,12 +67,28 @@ const timeLabel = (value: string) =>
 
 export default function ChatPreview() {
   const [darkMode, setDarkMode] = useState(false);
+  const [themeLoaded, setThemeLoaded] = useState(false);
+
+  // Restore the saved preference before writing any theme value back.
+  // This prevents the initial light-mode state from overwriting "dark".
   useEffect(() => {
-    try { setDarkMode(localStorage.getItem("connectx-theme") === "dark"); } catch {}
+    try {
+      setDarkMode(localStorage.getItem("connectx-theme") === "dark");
+    } catch {
+      // Keep the default light theme when storage is unavailable.
+    } finally {
+      setThemeLoaded(true);
+    }
   }, []);
+
   useEffect(() => {
-    try { localStorage.setItem("connectx-theme", darkMode ? "dark" : "light"); } catch {}
-  }, [darkMode]);
+    if (!themeLoaded) return;
+    try {
+      localStorage.setItem("connectx-theme", darkMode ? "dark" : "light");
+    } catch {
+      // The app remains usable if browser storage is unavailable.
+    }
+  }, [darkMode, themeLoaded]);
 
   const [userId, setUserId] = useState("");
   const [myProfile, setMyProfile] = useState<Profile | null>(null);
