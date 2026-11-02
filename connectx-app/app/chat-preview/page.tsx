@@ -392,6 +392,10 @@ export default function ChatPreview() {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_group_messages", filter: "group_id=eq." + selectedGroup.id }, (payload) => {
         const row = payload.new as GroupMessage;
         setGroupMessages((old) => old.some((item) => item.id === row.id) ? old : [...old, row]);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_group_messages", filter: "group_id=eq." + selectedGroup.id }, (payload) => {
+        const row = payload.new as GroupMessage;
+        setGroupMessages((old) => old.map((item) => item.id === row.id ? row : item));
       }).subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [selectedGroup?.id, userId]);
@@ -727,7 +731,8 @@ export default function ChatPreview() {
       .on("broadcast", { event: "typing" }, ({ payload }) => setTyping(!!payload?.typing))
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
         const row = payload.new as DirectMessage;
-        if (row.sender_id === userId && row.receiver_id === selectedFriend.id) setMessages((old) => old.map((m) => m.id === row.id ? { ...m, read_at: row.read_at } : m));
+        const belongsToChat = (row.sender_id === userId && row.receiver_id === selectedFriend.id) || (row.sender_id === selectedFriend.id && row.receiver_id === userId);
+        if (belongsToChat) setMessages((old) => old.map((m) => m.id === row.id ? { ...m, ...row } : m));
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (payload) => {
         const row = (payload.new ?? payload.old) as MessageReaction;
