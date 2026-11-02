@@ -106,6 +106,7 @@ export default function ChatPreview() {
   const [typing, setTyping] = useState(false);
   const [selectedChats, setSelectedChats] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [reactionMessage, setReactionMessage] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -522,6 +523,48 @@ export default function ChatPreview() {
     }, { onConflict: "user_id,friend_id" });
     if (prefError) throw prefError;
     await loadChatPreferences();
+  }
+
+  function toggleMessageSelection(messageId: string) {
+    setSelectedMessageIds((old) => old.includes(messageId) ? old.filter((id) => id !== messageId) : [...old, messageId]);
+  }
+
+  async function copySelectedMessages() {
+    const selected = messages.filter((message) => selectedMessageIds.includes(message.id));
+    if (!selected.length) { setNotice("Select at least one message to copy."); return; }
+    const text = selected.map((message) => (message.sender_id === userId ? "You" : activeName) + ": " + message.content).join("\\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice(selected.length + " selected message(s) copied.");
+      setSelectionMode(false);
+      setSelectedMessageIds([]);
+    } catch {
+      setError("Could not copy selected messages. Check clipboard permission.");
+    }
+  }
+
+  async function deleteSelectedMessages() {
+    const selected = messages.filter((message) => selectedMessageIds.includes(message.id));
+    if (!selected.length) { setNotice("Select at least one message to delete."); return; }
+    const ownIds = selected.filter((message) => message.sender_id === userId).map((message) => message.id);
+    const receivedCount = selected.length - ownIds.length;
+    if (!ownIds.length) {
+      setNotice("You can only delete messages you sent. Received messages cannot be deleted individually yet.");
+      return;
+    }
+    try {
+      const { error: deleteError } = await supabase.from("messages").delete().in("id", ownIds).eq("sender_id", userId);
+      if (deleteError) throw deleteError;
+      setMessages((old) => old.filter((message) => !ownIds.includes(message.id)));
+      setReactions((old) => old.filter((reaction) => !ownIds.includes(reaction.message_id)));
+      setSelectedMessageIds([]);
+      setSelectionMode(false);
+      setNotice(receivedCount
+        ? ownIds.length + " sent message(s) deleted. " + receivedCount + " received message(s) were kept."
+        : ownIds.length + " selected message(s) deleted.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not delete selected messages.");
+    }
   }
 
   async function clearSelectedChats(hide = false) {
@@ -1214,7 +1257,7 @@ export default function ChatPreview() {
               <button className="call-icon" title="Video call" aria-label="Start video call" disabled={!!activeCall || !!incomingCall} onClick={() => startCall("video")}>▣</button>
               <div className="chat-more-wrap"><button type="button" className="call-icon" aria-label="More chat options" onClick={() => setChatMenuOpen(v=>!v)}>⋮</button>
                 {chatMenuOpen && <div className="chat-more-menu">
-                  <button onClick={() => {setSelectionMode(true);setSelectedChats([selectedFriend!.id]);setShowMobileChat(false);setChatMenuOpen(false);}}>☑ Select chats</button>
+                  <button onClick={() => {setSelectionMode(true);setSelectedMessageIds([]);setChatMenuOpen(false);setNotice("Tap individual messages to select them.");}}>☑ Select messages</button>
                   <button onClick={() => {setThemePickerOpen(v=>!v);setChatMenuOpen(false);}}>🎨 Chat theme</button>
                   <button onClick={() => {setChatSearchOpen(v=>!v);setChatSearch("");setChatMenuOpen(false);}}>⌕ Search messages</button>
                   <button onClick={() => {const next=mutedChats.includes(selectedFriend!.id)?mutedChats.filter(x=>x!==selectedFriend!.id):[...mutedChats,selectedFriend!.id];setMutedChats(next);try{localStorage.setItem("connectx-muted-chats",JSON.stringify(next));}catch{}setNotice(next.includes(selectedFriend!.id)?"Chat muted on this device.":"Chat unmuted.");setChatMenuOpen(false);}}>{mutedChats.includes(selectedFriend!.id)?"🔔 Unmute chat":"🔕 Mute notifications"}</button>
@@ -1228,13 +1271,19 @@ export default function ChatPreview() {
             <div className="chat-theme-carousel">{chatThemes.map((theme,index)=><button type="button" key={theme.name} className={chatTheme===index?"chat-theme-choice chosen":"chat-theme-choice"} onClick={()=>{setChatTheme(index);try{localStorage.setItem("connectx-theme-"+selectedFriend.id,String(index));}catch{}}}>
               <span className="theme-preview" style={{background:theme.bg}}><i style={{background:theme.theirs}}/><i style={{background:theme.mine}}/><i style={{background:theme.mine}}/></span><small>{theme.name}</small></button>)}</div></div>}
           {chatSearchOpen && <div className="chat-search-bar"><input autoFocus value={chatSearch} onChange={e=>setChatSearch(e.target.value)} placeholder="Search messages in this chat"/><button onClick={()=>{setChatSearchOpen(false);setChatSearch("");}}>×</button><small>{messages.filter(m=>m.content.toLowerCase().includes(chatSearch.toLowerCase())).length} found</small></div>}
+          {selectionMode && <div className="bulk-actions message-selection-toolbar">
+            <strong>{selectedMessageIds.length} message(s) selected</strong>
+            <button type="button" disabled={!selectedMessageIds.length} onClick={() => void copySelectedMessages()}>Copy</button>
+            <button type="button" className="danger-option" disabled={!selectedMessageIds.length} onClick={() => void deleteSelectedMessages()}>Delete</button>
+            <button type="button" onClick={() => { setSelectionMode(false); setSelectedMessageIds([]); }}>Cancel</button>
+          </div>}
           <div className="messages-area" ref={messagesAreaRef} style={{background:activeChatTheme.bg}}>
             <div className="today">DIRECT MESSAGES</div>
             {typing && <div className="typing-indicator"><span></span><span></span><span></span> {activeName} is typing</div>}
             {messages.filter(m=>!chatSearch.trim() || m.content.toLowerCase().includes(chatSearch.toLowerCase())).map((message) => {
               const mine = message.sender_id === userId;
               const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
-              return <div key={message.id} className={mine ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, message, "direct")} onTouchEnd={(e) => finishReplySwipe(e, message, "direct")}>
+              return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "")} onClick={() => { if (selectionMode) toggleMessageSelection(message.id); }} onTouchStart={(e) => { if (!selectionMode) startReplySwipe(e, message, "direct"); }} onTouchEnd={(e) => { if (!selectionMode) finishReplySwipe(e, message, "direct"); }}>
                 <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content}</span></div>}{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
                   <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
@@ -1390,6 +1439,11 @@ export default function ChatPreview() {
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
         .request-row { display:flex;align-items:center;gap:7px;padding:10px 12px;color:#dce2f2;font-size:11px; }.request-row span { flex:1; }.settings-panel { padding:24px;text-align:center; }.large-avatar { width:76px;height:76px;margin:8px auto 14px;font-size:24px;border-radius:50%;display:grid;place-items:center;background:#29334b;color:#fff; }.profile-photo-wrap { display:flex;justify-content:center;margin:8px 0 18px; }.profile-photo { width:88px;height:88px;border-radius:50%;object-fit:cover;border:2px solid #56617b; }.profile-editor { text-align:left;display:flex;flex-direction:column;gap:10px; }.profile-field { display:flex;flex-direction:column;gap:6px;text-align:left;color:#cbd5e8;font-size:12px;font-weight:600; }.profile-field input,.profile-field textarea { width:100%;box-sizing:border-box;border:1px solid #35415a;border-radius:9px;background:#111a2b;color:#f3f6ff;padding:11px;font:inherit;font-weight:400; }.profile-field input[type=file] { font-size:11px; }.profile-field textarea { resize:vertical; }.profile-hint { color:#8290aa;font-size:10px;text-align:left;margin-top:-7px; }.privacy-heading { color:#9ca9c1;font-size:10px;letter-spacing:1px;text-align:left;margin-top:12px; }.privacy-option { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px;border:1px solid #303b53;border-radius:10px;text-align:left; }.privacy-option span { display:flex;flex-direction:column;gap:4px; }.privacy-option strong { color:#e9eefb;font-size:12px; }.privacy-option small { color:#8b96ad;font-size:10px; }.privacy-option input { accent-color:#8e80ff;width:18px;height:18px; }.action-btn { padding:12px 18px;margin-top:12px; }.toast { position:fixed;z-index:5;bottom:22px;left:50%;transform:translateX(-50%);max-width:min(92vw,560px);display:flex;gap:14px;align-items:center;padding:12px 15px;border:1px solid #3b4a65;border-radius:12px;background:#1b2940;color:#dce6ff;font-size:12px;box-shadow:0 10px 40px #0008; }.toast button { border:0;background:transparent;color:white;font-size:18px; }.error-toast { border-color:#8a4250;background:#3a202c;color:#ffd2d9; }
 
+        .message-line.message-selected { border-radius:14px;outline:2px solid #7659dc;outline-offset:3px;background:#7659dc18; }
+        .message-selection-toolbar { position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#f3efff;border-bottom:1px solid #ded5ff; }
+        .message-selection-toolbar strong { flex:1;min-width:120px;color:#38266d;font-size:12px; }
+        .message-selection-toolbar button { padding:8px 12px;border:0;border-radius:9px;background:#7659dc;color:#fff;font-size:12px;font-weight:650; }
+        .message-selection-toolbar button:disabled { opacity:.45; }
         .cx-shell[data-theme="dark"] { background:#101018;color:#eeeaf8; }
         .cx-shell[data-theme="dark"] .cx-list,
         .cx-shell[data-theme="dark"] .cx-conversation,
