@@ -571,7 +571,7 @@ export default function ChatPreview() {
       const {error:uploadError}=await supabase.storage.from("connectx-voice-notes").upload(key,voiceBlob,{contentType:voiceBlob.type});
       if(uploadError)throw uploadError;
       const url=supabase.storage.from("connectx-voice-notes").getPublicUrl(key).data.publicUrl;
-      const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice"}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type").single();
+      const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice",reply_to_id:replyTarget?.kind === "direct" ? replyTarget.id : null,reply_to_content:replyTarget?.kind === "direct" ? replyTarget.content : null,reply_to_sender_id:replyTarget?.kind === "direct" ? replyTarget.sender_id : null}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if(insertError)throw insertError;
       setMessages(old=>[...old,data as DirectMessage]);setReplyTarget(null);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");
     }catch(e){setError(e instanceof Error?e.message:"Could not send voice message.");}
@@ -615,6 +615,9 @@ export default function ChatPreview() {
         insertPayload = {
           sender_id: authData.user.id,
           receiver_id: selectedFriend.id,
+          reply_to_id: replyTarget?.kind === "direct" ? replyTarget.id : null,
+          reply_to_content: replyTarget?.kind === "direct" ? replyTarget.content : null,
+          reply_to_sender_id: replyTarget?.kind === "direct" ? replyTarget.sender_id : null,
           content: content || file.name,
           message_type: file.type.startsWith("video/") ? "video" : "image",
           media_path: uploadedPath,
@@ -624,7 +627,7 @@ export default function ChatPreview() {
       }
 
       const { data, error: insertError } = await supabase.from("messages").insert(insertPayload)
-        .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired")
+        .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired,reply_to_id,reply_to_content,reply_to_sender_id")
         .single();
       if (insertError) throw insertError;
       if (data) {
