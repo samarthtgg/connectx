@@ -917,8 +917,8 @@ export default function ChatPreview() {
   }
 
   async function sendPhoneVerification() {
-    const normalized = accountPhone.trim().replace(/[\\s()-]/g, "");
-    if (!/^\\+[1-9]\\d{7,14}$/.test(normalized)) {
+    const normalized = accountPhone.trim().replace(/[\s()-]/g, "");
+    if (!/^\+[1-9]\d{7,14}$/.test(normalized)) {
       setError("Enter your mobile number in international format, including country code (for India, +91…).");
       return;
     }
@@ -936,8 +936,8 @@ export default function ChatPreview() {
   }
 
   async function verifyAccountPhone() {
-    const normalized = accountPhone.trim().replace(/[\\s()-]/g, "");
-    if (!/^\\d{6}$/.test(phoneOtp)) { setError("Enter the 6-digit verification code."); return; }
+    const normalized = accountPhone.trim().replace(/[\s()-]/g, "");
+    if (!/^\d{6}$/.test(phoneOtp)) { setError("Enter the 6-digit verification code."); return; }
     setPhoneBusy(true); setError(""); setNotice("");
     try {
       const { data, error } = await supabase.auth.verifyOtp({ phone: normalized, token: phoneOtp, type: "phone_change" });
