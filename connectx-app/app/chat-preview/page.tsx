@@ -192,6 +192,33 @@ export default function ChatPreview() {
   const [newGroupDescription, setNewGroupDescription] = useState("");
   const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
   const [tab, setTab] = useState<"Messages" | "Friends" | "Settings" | "Status">("Messages");
+  const mainTabOrder = ["Messages", "Status", "Friends", "Settings"] as const;
+  const mainTabTouchStart = useRef<{x:number;y:number}|null>(null);
+  function handleMainTabTouchStart(event: TouchEvent<HTMLElement>) {
+    if (window.innerWidth > 700 || (event.target as HTMLElement).closest("button,input,textarea,select,a,[role=dialog],video")) return;
+    const touch = event.touches[0];
+    if (touch) mainTabTouchStart.current = {x:touch.clientX,y:touch.clientY};
+  }
+  function handleMainTabTouchEnd(event: TouchEvent<HTMLElement>) {
+    const start = mainTabTouchStart.current;
+    mainTabTouchStart.current = null;
+    if (!start || window.innerWidth > 700) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < 75 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    const current = mainTabOrder.indexOf(tab);
+    const next = current + (dx < 0 ? 1 : -1);
+    if (next < 0 || next >= mainTabOrder.length) return;
+    setTab(mainTabOrder[next]);
+    setSelectedFriend(null);
+    setSelectedGroup(null);
+    setShowMobileChat(false);
+    setViewingStatusUser(null);
+    setShowStatusComposer(false);
+    if (mainTabOrder[next] === "Messages") void loadGroups().catch((error) => setError(error.message));
+  }
   const [statuses,setStatuses]=useState<StatusUpdate[]>([]);
   const [statusCaption,setStatusCaption]=useState("");
   const [statusFile,setStatusFile]=useState<File|null>(null);
@@ -1199,7 +1226,7 @@ export default function ChatPreview() {
         <div className="rail-spacer" /><div className="cx-user">{initials(myProfile?.full_name || myProfile?.username || "U")}</div>
       </aside>
 
-      <section className={`cx-list ${showMobileChat ? "hide-mobile" : ""}`}>
+      <section className={`cx-list ${showMobileChat ? "hide-mobile" : ""}`} onTouchStart={handleMainTabTouchStart} onTouchEnd={handleMainTabTouchEnd}>
         <header className="list-head">
           <div><div className="cx-brand"><span>✦</span> ConnectX</div><p>Your space to connect</p></div>
           <button className="icon-btn header-profile" aria-label="Open settings" onClick={() => { setTab("Settings"); setShowMobileChat(false); }}>{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(myProfile?.full_name || myProfile?.username || "U")}</button>
@@ -1539,7 +1566,7 @@ export default function ChatPreview() {
         .rail-btn.selected { background:#29264a;color:#c8beff; }
         .rail-spacer { flex:1; }.cx-user,.profile-avatar,.large-avatar { display:grid;place-items:center;border-radius:50%;background:#554b9b;font-weight:800; }
         .cx-user { width:36px;height:36px;font-size:11px; }
-        .cx-list { width:360px;min-width:300px;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#121a2b;border-right:1px solid #232d42; }.list-head { flex-shrink:0; }.list-label { flex-shrink:0; }.profile-editor { padding-bottom:calc(32px + env(safe-area-inset-bottom)); }
+        .cx-list { touch-action:pan-y;  width:360px;min-width:300px;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#121a2b;border-right:1px solid #232d42; }.list-head { flex-shrink:0; }.list-label { flex-shrink:0; }.profile-editor { padding-bottom:calc(32px + env(safe-area-inset-bottom)); }
         .list-head { padding:24px 20px 18px;display:flex;align-items:center;justify-content:space-between; }
         .cx-brand { font-size:22px;font-weight:850;letter-spacing:-.8px; }.cx-brand span { color:#a99aff; }
         .list-head p { margin:5px 0 0;color:#8490a9;font-size:12px; }
