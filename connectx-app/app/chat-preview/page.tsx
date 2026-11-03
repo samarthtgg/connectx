@@ -190,10 +190,13 @@ export default function ChatPreview() {
   const [groupToolTab, setGroupToolTab] = useState<"announcement"|"poll"|null>(null);
   const [groupMembers, setGroupMembers] = useState<Array<{user_id:string;role:string;joined_at:string}>>([]);
   const [groupAnnouncements, setGroupAnnouncements] = useState<Array<{id:string;author_id:string;content:string;created_at:string}>>([]);
-  const [groupPolls, setGroupPolls] = useState<Array<{id:string;question:string;is_closed:boolean;options:Array<{id:string;label:string;votes:number;voted:boolean}>}>>([]);
+  const [groupPolls, setGroupPolls] = useState<Array<{id:string;question:string;is_closed:boolean;allow_multiple_answers:boolean;hide_voter_names:boolean;options:Array<{id:string;label:string;votes:number;voted:boolean}>}>>([]);
   const [announcementDraft, setAnnouncementDraft] = useState("");
   const [pollQuestion, setPollQuestion] = useState("");
-  const [pollOptionsDraft, setPollOptionsDraft] = useState("");
+  const [pollOptionsDraft, setPollOptionsDraft] = useState<string[]>(["", ""]);
+  const [pollAllowMultipleAnswers, setPollAllowMultipleAnswers] = useState(false);
+  const [pollHideVoterNames, setPollHideVoterNames] = useState(false);
+  const groupPostLock = useRef(false);
   const [groupEditName, setGroupEditName] = useState("");
   const [groupEditDescription, setGroupEditDescription] = useState("");
   const [replyTarget, setReplyTarget] = useState<{ id: string; content: string; sender_id: string; kind: "direct" | "group" } | null>(null);
@@ -447,9 +450,9 @@ export default function ChatPreview() {
     const announcementsResult = await supabase.from("group_announcements").select("id,author_id,content,created_at").eq("group_id",group.id).order("created_at",{ascending:false}).limit(50);
     if(announcementsResult.error) throw announcementsResult.error;
     setGroupAnnouncements((announcementsResult.data??[]) as Array<{id:string;author_id:string;content:string;created_at:string}>);
-    const pollsResult = await supabase.from("group_polls").select("id,question,is_closed").eq("group_id",group.id).order("created_at",{ascending:false}).limit(30);
+    const pollsResult = await supabase.from("group_polls").select("id,question,is_closed,allow_multiple_answers,hide_voter_names").eq("group_id",group.id).order("created_at",{ascending:false}).limit(30);
     if(pollsResult.error) throw pollsResult.error;
-    const rows=(pollsResult.data??[]) as Array<{id:string;question:string;is_closed:boolean}>;
+    const rows=(pollsResult.data??[]) as Array<{id:string;question:string;is_closed:boolean;allow_multiple_answers:boolean;hide_voter_names:boolean}>;
     if(!rows.length){setGroupPolls([]);return;}
     const ids=rows.map(p=>p.id);
     const optionsResult=await supabase.from("group_poll_options").select("id,poll_id,label").in("poll_id",ids);
@@ -461,43 +464,57 @@ export default function ChatPreview() {
   async function openGroupProfile(){if(!selectedGroup)return;setGroupProfileOpen(true);try{await loadGroupProfile(selectedGroup);}catch(e){setError(e instanceof Error?e.message:"Could not load group info.");}}
   async function saveGroupDetails(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!selectedGroup||!groupEditName.trim())return;const {data,error}=await supabase.from("chat_groups").update({name:groupEditName.trim(),description:groupEditDescription.trim()||null,updated_at:new Date().toISOString()}).eq("id",selectedGroup.id).select("id,name,description,created_by,created_at").single();if(error){setError(error.message);return;}setSelectedGroup(data as ChatGroup);await loadGroups();setNotice("Group info updated.");}
   async function postGroupAnnouncement(){
-    const content=announcementDraft.trim();
-    if(!selectedGroup||!userId||!content||busy)return;
-    const myMembership=groupMembers.find(m=>m.user_id===userId);
-    if(myMembership?.role!=="admin"){setError("Only group admins can post announcements.");return;}
-    setBusy(true);setError("");setNotice("");
-    try{
-      const {error}=await supabase.from("group_announcements").insert({group_id:selectedGroup.id,author_id:userId,content});
-      if(error)throw error;
-      setAnnouncementDraft("");setGroupToolTab(null);setShowGroupTools(false);
-      await loadGroupFeed(selectedGroup);
-      setNotice("Announcement posted and visible in the group.");
-    }catch(e){setError(e instanceof Error?e.message:"Announcement could not be posted.");}
-    finally{setBusy(false);}
-  }
-  async function createGroupPoll(){
-    const question=pollQuestion.trim();
-    const opts=pollOptionsDraft.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).slice(0,10);
-    if(!selectedGroup||!userId||!question||busy)return;
-    if(opts.length<2){setError("Add at least two options, one per line.");return;}
-    setBusy(true);setError("");setNotice("");
-    let createdPollId:string|null=null;
-    try{
-      const {data,error}=await supabase.from("group_polls").insert({group_id:selectedGroup.id,created_by:userId,question}).select("id").single();
-      if(error)throw error;
-      createdPollId=data.id;
-      const {error:optionError}=await supabase.from("group_poll_options").insert(opts.map(label=>({poll_id:data.id,label})));
-      if(optionError)throw optionError;
-      setPollQuestion("");setPollOptionsDraft("");setGroupToolTab(null);setShowGroupTools(false);
-      await loadGroupFeed(selectedGroup);
-      setNotice("Poll posted and visible in the group.");
-    }catch(e){
-      if(createdPollId)await supabase.from("group_polls").delete().eq("id",createdPollId);
-      setError(e instanceof Error?e.message:"Poll could not be posted.");
-    }finally{setBusy(false);}
-  }
-  async function voteGroupPoll(pollId:string,optionId:string){const p=groupPolls.find(x=>x.id===pollId);if(!p||p.is_closed)return;const old=p.options.find(x=>x.voted);const result=old?await supabase.from("group_poll_votes").update({option_id:optionId}).eq("poll_id",pollId).eq("user_id",userId):await supabase.from("group_poll_votes").insert({poll_id:pollId,option_id:optionId,user_id:userId});if(result.error){setError(result.error.message);return;}await loadGroupProfile(selectedGroup!);}
-  async function manageGroupMember(memberId:string,action:"admin"|"member"|"remove"){if(!selectedGroup)return;const query=action==="remove"?supabase.from("chat_group_members").delete().eq("group_id",selectedGroup.id).eq("user_id",memberId):supabase.from("chat_group_members").update({role:action}).eq("group_id",selectedGroup.id).eq("user_id",memberId);const {error}=await query;if(error){setError(error.message);return;}await loadGroupProfile(selectedGroup);await loadGroups();}
+     const content=announcementDraft.trim();
+     if(!selectedGroup||!userId||!content||groupPostLock.current)return;
+     const myMembership=groupMembers.find(m=>m.user_id===userId);
+     if(myMembership?.role!=="admin"){setError("Only group admins can post announcements.");return;}
+     groupPostLock.current=true;setBusy(true);setError("");setNotice("");
+     try{
+       const {data,error}=await supabase.from("group_announcements").insert({group_id:selectedGroup.id,author_id:userId,content}).select("id,author_id,content,created_at").single();
+       if(error)throw error;
+       setGroupAnnouncements(current=>[data as {id:string;author_id:string;content:string;created_at:string},...current]);
+       setAnnouncementDraft("");setGroupToolTab(null);setShowGroupTools(false);
+       setNotice("Announcement posted.");
+     }catch(e){setError(e instanceof Error?e.message:"Announcement could not be posted.");}
+     finally{groupPostLock.current=false;setBusy(false);}
+   }
+   async function createGroupPoll(){
+     const question=pollQuestion.trim();
+     const opts=pollOptionsDraft.map(x=>x.trim()).filter(Boolean).slice(0,10);
+     if(!selectedGroup||!userId||!question||groupPostLock.current)return;
+     if(opts.length<2){setError("Add at least two non-empty options.");return;}
+     groupPostLock.current=true;setBusy(true);setError("");setNotice("");
+     try{
+       const {data,error}=await supabase.rpc("create_group_poll",{
+         p_group_id:selectedGroup.id,p_question:question,p_options:opts,
+         p_allow_multiple_answers:pollAllowMultipleAnswers,p_hide_voter_names:pollHideVoterNames
+       });
+       if(error)throw error;
+       if(!data)throw new Error("The poll was not saved. Please try again.");
+       await loadGroupFeed(selectedGroup);
+       setPollQuestion("");setPollOptionsDraft(["",""]);setPollAllowMultipleAnswers(false);setPollHideVoterNames(false);
+       setGroupToolTab(null);setShowGroupTools(false);setNotice("Poll posted.");
+     }catch(e){setError(e instanceof Error?e.message:"Poll could not be posted.");}
+     finally{groupPostLock.current=false;setBusy(false);}
+   }
+   async function voteGroupPoll(pollId:string,optionId:string){
+     const p=groupPolls.find(x=>x.id===pollId);if(!p||p.is_closed||!userId)return;
+     const selected=p.options.find(x=>x.id===optionId);
+     let result;
+     if(p.allow_multiple_answers){
+       result=selected?.voted
+         ? await supabase.from("group_poll_votes").delete().eq("poll_id",pollId).eq("option_id",optionId).eq("user_id",userId)
+         : await supabase.from("group_poll_votes").insert({poll_id:pollId,option_id:optionId,user_id:userId});
+     }else{
+       const old=p.options.find(x=>x.voted);
+       result=old
+         ? await supabase.from("group_poll_votes").update({option_id:optionId}).eq("poll_id",pollId).eq("user_id",userId)
+         : await supabase.from("group_poll_votes").insert({poll_id:pollId,option_id:optionId,user_id:userId});
+     }
+     if(result.error){setError(result.error.message);return;}
+     await loadGroupFeed(selectedGroup!);
+   }
+   async function manageGroupMember(memberId:string,action:"admin"|"member"|"remove"){if(!selectedGroup)return;const query=action==="remove"?supabase.from("chat_group_members").delete().eq("group_id",selectedGroup.id).eq("user_id",memberId):supabase.from("chat_group_members").update({role:action}).eq("group_id",selectedGroup.id).eq("user_id",memberId);const {error}=await query;if(error){setError(error.message);return;}await loadGroupProfile(selectedGroup);await loadGroups();}
   async function openGroup(group: ChatGroup) {
     setSelectedGroup(group); setSelectedFriend(null); setShowMobileChat(true); setTab("Messages"); setError("");
     const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").eq("group_id", group.id).order("created_at", { ascending: false }).limit(100);
@@ -1518,7 +1535,12 @@ export default function ChatPreview() {
         {selectedGroup && tab === "Messages" ? <>
           <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><button type="button" className="profile-open-avatar" onClick={() => void openGroupProfile()} aria-label="Open group info"><span className="avatar">♧</span></button><button type="button" className="person profile-open-name" onClick={() => void openGroupProfile()}><strong>{selectedGroup.name}</strong><small>Tap for group info</small></button><button type="button" className="call-icon" onClick={() => void openGroupProfile()} aria-label="Group info">ⓘ</button></header>
           <div className="messages-area" ref={messagesAreaRef}><div className="today">GROUP MESSAGES</div>{groupAnnouncements.map(a=><article className="group-feed-card" key={"announcement-"+a.id}><strong>📢 Announcement</strong><p>{a.content}</p><small>{profiles.find(p=>p.id===a.author_id)?displayName(profiles.find(p=>p.id===a.author_id)!):"Group admin"} · {timeLabel(a.created_at)}</small></article>)}{groupPolls.map(p=><article className="group-feed-card" key={"poll-"+p.id}><strong>📊 {p.question}</strong>{p.options.map(o=><button type="button" key={o.id} disabled={p.is_closed} className={o.voted?"group-poll-option voted":"group-poll-option"} onClick={()=>void voteGroupPoll(p.id,o.id)}><span>{o.label}</span><span>{o.votes}{o.voted?" ✓":""}</span></button>)}<small>{p.is_closed?"Poll closed":"Tap an option to vote"}</small></article>)}{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, m, "group")} onTouchEnd={(e) => finishReplySwipe(e, m, "group")}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}>{m.reply_to_content && <div className="reply-quote"><strong>{m.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{m.reply_to_content}</span></div>}<p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
-          {showGroupTools && <div className="group-action-backdrop" onClick={()=>{setShowGroupTools(false);setGroupToolTab(null);}}><section className="group-tools-panel" role="dialog" aria-modal="true" aria-label="Group actions" onClick={e=>e.stopPropagation()}><div className="group-tools-panel-head"><div><strong>{groupToolTab==="announcement"?"New announcement":groupToolTab==="poll"?"Create a poll":"Group actions"}</strong><small>{groupToolTab?"Share something with everyone in this group":"Choose what you want to post"}</small></div><button type="button" aria-label="Close group actions" onClick={()=>{setShowGroupTools(false);setGroupToolTab(null);}}>×</button></div>{!groupToolTab && <div className="group-tools-tabs"><button type="button" onClick={()=>setGroupToolTab("announcement")} disabled={groupMembers.find(m=>m.user_id===userId)?.role!=="admin"}><span>📢</span><strong>Announcement</strong><small>Important message for members</small></button><button type="button" onClick={()=>setGroupToolTab("poll")}><span>📊</span><strong>Poll</strong><small>Ask members to vote</small></button></div>}{groupToolTab==="announcement" && <div className="group-tool-editor"><label>Announcement message</label><textarea rows={4} maxLength={2000} value={announcementDraft} onChange={e=>setAnnouncementDraft(e.target.value)} placeholder="Write your announcement…" /><button type="button" className="action-btn" disabled={!announcementDraft.trim()||busy} onClick={()=>void postGroupAnnouncement()}>{busy?"Posting…":"Post announcement"}</button></div>}{groupToolTab==="poll" && <div className="group-tool-editor"><label>Poll question</label><input value={pollQuestion} onChange={e=>setPollQuestion(e.target.value)} maxLength={250} placeholder="What do you want to ask?" /><label>Options <small>One option per line (2–10)</small></label><textarea rows={4} value={pollOptionsDraft} onChange={e=>setPollOptionsDraft(e.target.value)} placeholder={"Option 1\nOption 2"} /><button type="button" className="action-btn" disabled={!pollQuestion.trim()||pollOptionsDraft.split(/\r?\n/).filter(x=>x.trim()).length<2||busy} onClick={()=>void createGroupPoll()}>{busy?"Creating…":"Create poll"}</button></div>}</section></div>}<form className="composer group-composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<button type="button" className="group-more-btn" aria-label="More group actions" onClick={()=>{setShowGroupTools(v=>!v);setGroupToolTab(null);}}>⋮</button><textarea className="composer-textarea" rows={1} value={groupDraft} onChange={(e) => { setGroupDraft(e.target.value); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, window.innerHeight * 0.35)}px`; }} placeholder="Message the group…" maxLength={5000} aria-label="Group message" /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
+          {showGroupTools && <div className="group-action-backdrop" onClick={()=>{setShowGroupTools(false);setGroupToolTab(null);}}><section className="group-tools-panel" role="dialog" aria-modal="true" aria-label="Group actions" onClick={e=>e.stopPropagation()}><div className="group-tools-panel-head"><div><strong>{groupToolTab==="announcement"?"New announcement":groupToolTab==="poll"?"Create a poll":"Group actions"}</strong><small>{groupToolTab?"Share something with everyone in this group":"Choose what you want to post"}</small></div><button type="button" aria-label="Close group actions" onClick={()=>{setShowGroupTools(false);setGroupToolTab(null);}}>×</button></div>{!groupToolTab && <div className="group-tools-tabs"><button type="button" onClick={()=>setGroupToolTab("announcement")} disabled={groupMembers.find(m=>m.user_id===userId)?.role!=="admin"}><span>📢</span><strong>Announcement</strong><small>Important message for members</small></button><button type="button" onClick={()=>setGroupToolTab("poll")}><span>📊</span><strong>Poll</strong><small>Ask members to vote</small></button></div>}{groupToolTab==="announcement" && <div className="group-tool-editor"><label>Announcement message</label><textarea rows={4} maxLength={2000} value={announcementDraft} onChange={e=>setAnnouncementDraft(e.target.value)} placeholder="Write your announcement…" /><button type="button" className="action-btn" disabled={!announcementDraft.trim()||busy} onClick={()=>void postGroupAnnouncement()}>{busy?"Posting…":"Post announcement"}</button></div>}{groupToolTab==="poll" && <div className="group-tool-editor poll-editor">
+<label htmlFor="group-poll-question">Question</label><input id="group-poll-question" autoFocus value={pollQuestion} onChange={e=>setPollQuestion(e.target.value)} maxLength={255} placeholder="Ask a question" /><small className="poll-counter">{pollQuestion.length}/255</small>
+<label>Options <small>2–10 options</small></label><div className="poll-option-fields">{pollOptionsDraft.map((option,index)=><div className="poll-option-row" key={index}><input aria-label={"Option "+(index+1)} value={option} maxLength={100} onChange={e=>setPollOptionsDraft(current=>current.map((item,i)=>i===index?e.target.value:item))} placeholder={"Option "+(index+1)} />{pollOptionsDraft.length>2&&<button type="button" className="poll-remove-option" aria-label={"Remove option "+(index+1)} onClick={()=>setPollOptionsDraft(current=>current.filter((_,i)=>i!==index))}>×</button>}</div>)}</div>
+{pollOptionsDraft.length<10&&<button type="button" className="poll-add-option" onClick={()=>setPollOptionsDraft(current=>[...current,""])}>＋ Add option</button>}
+<div className="poll-setting-row"><span>Allow multiple answers</span><input type="checkbox" checked={pollAllowMultipleAnswers} onChange={e=>setPollAllowMultipleAnswers(e.target.checked)} /></div><div className="poll-setting-row"><span>Hide voter names</span><input type="checkbox" checked={pollHideVoterNames} onChange={e=>setPollHideVoterNames(e.target.checked)} /></div>
+<button type="button" className="action-btn poll-send-btn" disabled={!pollQuestion.trim()||pollOptionsDraft.filter(x=>x.trim()).length<2||busy} onClick={()=>void createGroupPoll()}>{busy?"Sending…":"➤ Send poll"}</button></div>}</section></div>}<form className="composer group-composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<button type="button" className="group-more-btn" aria-label="More group actions" onClick={()=>{setShowGroupTools(v=>!v);setGroupToolTab(null);}}>⋮</button><textarea className="composer-textarea" rows={1} value={groupDraft} onChange={(e) => { setGroupDraft(e.target.value); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, window.innerHeight * 0.35)}px`; }} placeholder="Message the group…" maxLength={5000} aria-label="Group message" /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
         </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
@@ -1967,6 +1989,28 @@ export default function ChatPreview() {
         .group-action-backdrop .group-tool-editor .action-btn { width:100%;min-height:48px;margin-top:5px;border:0;border-radius:13px;background:#7868eb;color:#fff;font-size:14px;font-weight:700; }
         .group-feed-card { max-width:min(92%,560px);margin:10px auto;padding:13px 15px;border:1px solid #3b4260;border-radius:14px;background:#1b2438;color:#f4f5fb; }
         @media(max-width:600px){.group-action-backdrop{padding:12px 10px calc(78px + env(safe-area-inset-bottom));}.group-action-backdrop .group-tools-panel{border-radius:22px;padding:18px;}.group-action-backdrop .group-tools-tabs button{min-height:118px;}}
+
+        /* WhatsApp-like group post and poll composer */
+        .group-action-backdrop{position:fixed!important;inset:0!important;z-index:1200!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom))!important;background:rgba(0,0,0,.76)!important;backdrop-filter:blur(7px)!important}
+        .group-action-backdrop .group-tools-panel{position:relative!important;inset:auto!important;left:auto!important;right:auto!important;bottom:auto!important;width:min(100%,520px)!important;max-height:min(84dvh,760px)!important;overflow-y:auto!important;overscroll-behavior:contain!important;margin:0!important;padding:20px!important;border:1px solid #343941!important;border-radius:22px!important;background:#0b1014!important;box-shadow:0 24px 80px #000b!important;display:grid!important;gap:18px!important}
+        .group-action-backdrop .group-tools-panel-head{position:sticky;top:-20px;z-index:2;margin:-20px -20px 0;padding:18px 20px;background:#0b1014;border-bottom:1px solid #20262b}
+        .group-action-backdrop .group-tools-panel-head strong{font-size:19px!important;color:#f4f6f8!important}.group-action-backdrop .group-tools-panel-head small{font-size:12px!important;color:#8d969d!important}
+        .group-action-backdrop .group-tools-panel-head button{width:36px!important;height:36px!important;flex:0 0 36px!important;border:0!important;background:#252b30!important;color:#e9edf0!important}
+        .group-action-backdrop .group-tools-tabs button{min-height:92px!important;border-radius:15px!important;background:#171d22!important;border:1px solid #30383f!important}
+        .group-action-backdrop .group-tool-editor{gap:10px!important}.group-action-backdrop .group-tool-editor label{margin-top:3px;color:#9da7ae!important;font-size:13px!important;font-weight:600!important}
+        .group-action-backdrop .group-tool-editor input:not([type=checkbox]),.group-action-backdrop .group-tool-editor textarea{min-height:54px!important;padding:14px 15px!important;border:1px solid #384148!important;border-radius:12px!important;background:#11171b!important;color:#f5f7f8!important;font-size:15px!important;outline:none}
+        .group-action-backdrop .group-tool-editor input:focus,.group-action-backdrop .group-tool-editor textarea:focus{border-color:#20bd68!important;box-shadow:0 0 0 2px #20bd6820!important}
+        .group-action-backdrop .group-tool-editor textarea{min-height:100px!important}.group-action-backdrop .poll-counter{margin-top:-8px;text-align:right;color:#78838b;font-size:11px}
+        .poll-option-fields{display:grid;gap:9px}.poll-option-row{display:flex;align-items:center;gap:8px}.poll-option-row input{flex:1;min-width:0}
+        .poll-remove-option{width:34px;height:34px;flex:0 0 34px;border:0;border-radius:50%;background:#252d32;color:#b7c0c6;font-size:21px}
+        .group-action-backdrop .poll-add-option{justify-self:start;padding:8px 0;border:0;background:transparent;color:#20bd68;font-size:14px;font-weight:600}
+        .poll-setting-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #252d32;color:#e4e9ec;font-size:14px}
+        .poll-setting-row input{appearance:none;width:48px;height:28px;flex:0 0 48px;border:0!important;border-radius:20px;background:#39434a!important;position:relative;cursor:pointer;transition:background .18s}
+        .poll-setting-row input:before{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#e8ecef;transition:transform .18s}
+        .poll-setting-row input:checked{background:#20bd68!important}.poll-setting-row input:checked:before{transform:translateX(20px)}
+        .group-action-backdrop .poll-send-btn{min-height:52px!important;margin-top:4px!important;border-radius:14px!important;background:#20bd68!important;color:#07130c!important;font-size:16px!important;font-weight:700!important}
+        .group-action-backdrop .poll-send-btn:disabled{opacity:.45}.group-feed-card .group-poll-option{background:#20282d;border-color:#39444b}.group-feed-card .group-poll-option.voted{background:#173d2b;border-color:#20bd68}
+        @media(max-width:600px){.group-action-backdrop{padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom))!important}.group-action-backdrop .group-tools-panel{width:100%!important;max-height:84dvh!important;border-radius:20px!important;padding:18px!important}.group-action-backdrop .group-tools-panel-head{top:-18px;margin:-18px -18px 0;padding:16px 18px}}
 </style>
     </main>
   );
