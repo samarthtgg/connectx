@@ -185,6 +185,15 @@ export default function ChatPreview() {
   const [selectedGroup, setSelectedGroup] = useState<ChatGroup | null>(null);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [groupDraft, setGroupDraft] = useState("");
+  const [groupProfileOpen, setGroupProfileOpen] = useState(false);
+  const [groupMembers, setGroupMembers] = useState<Array<{user_id:string;role:string;joined_at:string}>>([]);
+  const [groupAnnouncements, setGroupAnnouncements] = useState<Array<{id:string;author_id:string;content:string;created_at:string}>>([]);
+  const [groupPolls, setGroupPolls] = useState<Array<{id:string;question:string;is_closed:boolean;options:Array<{id:string;label:string;votes:number;voted:boolean}>}>>([]);
+  const [announcementDraft, setAnnouncementDraft] = useState("");
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptionsDraft, setPollOptionsDraft] = useState("");
+  const [groupEditName, setGroupEditName] = useState("");
+  const [groupEditDescription, setGroupEditDescription] = useState("");
   const [replyTarget, setReplyTarget] = useState<{ id: string; content: string; sender_id: string; kind: "direct" | "group" } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const messagesAreaRef = useRef<HTMLDivElement>(null);
@@ -424,6 +433,30 @@ export default function ChatPreview() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not create group."); }
     finally { setBusy(false); }
   }
+  async function loadGroupProfile(group: ChatGroup) {
+    const [mr, ar, pr] = await Promise.all([
+      supabase.from("chat_group_members").select("user_id,role,joined_at").eq("group_id",group.id).order("joined_at"),
+      supabase.from("group_announcements").select("id,author_id,content,created_at").eq("group_id",group.id).order("created_at",{ascending:false}).limit(30),
+      supabase.from("group_polls").select("id,question,is_closed").eq("group_id",group.id).order("created_at",{ascending:false}).limit(20)
+    ]);
+    if(mr.error) throw mr.error; if(ar.error) throw ar.error; if(pr.error) throw pr.error;
+    const members=(mr.data??[]) as Array<{user_id:string;role:string;joined_at:string}>; setGroupMembers(members);
+    setGroupAnnouncements((ar.data??[]) as Array<{id:string;author_id:string;content:string;created_at:string}>);
+    const rows=(pr.data??[]) as Array<{id:string;question:string;is_closed:boolean}>;
+    if(rows.length){
+      const ids=rows.map(p=>p.id);
+      const [or,vr]=await Promise.all([supabase.from("group_poll_options").select("id,poll_id,label").in("poll_id",ids),supabase.from("group_poll_votes").select("option_id,user_id").in("poll_id",ids)]);
+      if(or.error)throw or.error;if(vr.error)throw vr.error;
+      setGroupPolls(rows.map(p=>({...p,options:(or.data??[]).filter(o=>o.poll_id===p.id).map(o=>({id:o.id,label:o.label,votes:(vr.data??[]).filter(v=>v.option_id===o.id).length,voted:(vr.data??[]).some(v=>v.option_id===o.id&&v.user_id===userId)}))})));
+    } else setGroupPolls([]);
+    setGroupEditName(group.name);setGroupEditDescription(group.description??"");
+  }
+  async function openGroupProfile(){if(!selectedGroup)return;setGroupProfileOpen(true);try{await loadGroupProfile(selectedGroup);}catch(e){setError(e instanceof Error?e.message:"Could not load group info.");}}
+  async function saveGroupDetails(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!selectedGroup||!groupEditName.trim())return;const {data,error}=await supabase.from("chat_groups").update({name:groupEditName.trim(),description:groupEditDescription.trim()||null,updated_at:new Date().toISOString()}).eq("id",selectedGroup.id).select("id,name,description,created_by,created_at").single();if(error){setError(error.message);return;}setSelectedGroup(data as ChatGroup);await loadGroups();setNotice("Group info updated.");}
+  async function postGroupAnnouncement(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!selectedGroup||!announcementDraft.trim())return;const {error}=await supabase.from("group_announcements").insert({group_id:selectedGroup.id,author_id:userId,content:announcementDraft.trim()});if(error){setError(error.message);return;}setAnnouncementDraft("");await loadGroupProfile(selectedGroup);}
+  async function createGroupPoll(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!selectedGroup||!pollQuestion.trim())return;const opts=pollOptionsDraft.split("\n").map(x=>x.trim()).filter(Boolean).slice(0,10);if(opts.length<2){setError("Add at least two options, one per line.");return;}const {data,error}=await supabase.from("group_polls").insert({group_id:selectedGroup.id,created_by:userId,question:pollQuestion.trim()}).select("id").single();if(error){setError(error.message);return;}const {error:oe}=await supabase.from("group_poll_options").insert(opts.map(label=>({poll_id:data.id,label})));if(oe){setError(oe.message);return;}setPollQuestion("");setPollOptionsDraft("");await loadGroupProfile(selectedGroup);}
+  async function voteGroupPoll(pollId:string,optionId:string){const p=groupPolls.find(x=>x.id===pollId);if(!p||p.is_closed)return;const old=p.options.find(x=>x.voted);const result=old?await supabase.from("group_poll_votes").update({option_id:optionId}).eq("poll_id",pollId).eq("user_id",userId):await supabase.from("group_poll_votes").insert({poll_id:pollId,option_id:optionId,user_id:userId});if(result.error){setError(result.error.message);return;}await loadGroupProfile(selectedGroup!);}
+  async function manageGroupMember(memberId:string,action:"admin"|"member"|"remove"){if(!selectedGroup)return;const query=action==="remove"?supabase.from("chat_group_members").delete().eq("group_id",selectedGroup.id).eq("user_id",memberId):supabase.from("chat_group_members").update({role:action}).eq("group_id",selectedGroup.id).eq("user_id",memberId);const {error}=await query;if(error){setError(error.message);return;}await loadGroupProfile(selectedGroup);await loadGroups();}
   async function openGroup(group: ChatGroup) {
     setSelectedGroup(group); setSelectedFriend(null); setShowMobileChat(true); setTab("Messages"); setError("");
     const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").eq("group_id", group.id).order("created_at", { ascending: false }).limit(100);
@@ -1441,7 +1474,7 @@ export default function ChatPreview() {
       </nav>
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
         {selectedGroup && tab === "Messages" ? <>
-          <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><span className="avatar">♧</span><div className="person"><strong>{selectedGroup.name}</strong><small>Group conversation</small></div></header>
+          <header className="conversation-head"><button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button><button type="button" className="profile-open-avatar" onClick={() => void openGroupProfile()} aria-label="Open group info"><span className="avatar">♧</span></button><button type="button" className="person profile-open-name" onClick={() => void openGroupProfile()}><strong>{selectedGroup.name}</strong><small>Tap for group info</small></button><button type="button" className="call-icon" onClick={() => void openGroupProfile()} aria-label="Group info">ⓘ</button></header>
           <div className="messages-area" ref={messagesAreaRef}><div className="today">GROUP MESSAGES</div>{groupMessages.filter((m) => !m.deleted_for_everyone).map((m) => <div key={m.id} className={m.sender_id === userId ? "message-line mine" : "message-line"} onTouchStart={(e) => startReplySwipe(e, m, "group")} onTouchEnd={(e) => finishReplySwipe(e, m, "group")}><div className={m.sender_id === userId ? "bubble mine-bubble" : "bubble"}>{m.reply_to_content && <div className="reply-quote"><strong>{m.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{m.reply_to_content}</span></div>}<p>{m.content}</p><small>{m.sender_id === userId ? "You · " : "Member · "}{timeLabel(m.created_at)}</small></div></div>)}{groupMessages.length === 0 && <p className="empty">This group is ready. Send the first message.</p>}</div>
           <form className="composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<textarea className="composer-textarea" rows={1} value={groupDraft} onChange={(e) => { setGroupDraft(e.target.value); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, window.innerHeight * 0.35)}px`; }} placeholder="Message the group…" maxLength={5000} aria-label="Group message" /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
         </> : selectedFriend && tab === "Messages" ? <>
