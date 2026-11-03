@@ -212,7 +212,7 @@ export default function Home() {
             </form>
 
             {mode === "login" && (
-              <button type="button" onClick={() => changeMode("forgot")} className="mt-4 w-full text-center text-sm font-medium text-indigo-300 hover:text-indigo-200">Forgot password?</button>
+              <button type="button" onClick={() => { window.location.href = "/reset-password"; }} className="mt-4 w-full text-center text-sm font-medium text-indigo-300 hover:text-indigo-200">Forgot password? Recover with mobile OTP</button>
             )}
 
             {verificationPending && (
