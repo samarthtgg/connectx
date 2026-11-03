@@ -73,6 +73,8 @@ export default function Home() {
           } else {
             throw error;
           }
+        } else if (data.user && data.user.identities?.length === 0) {
+          showMessage("An account with this email already exists. Sign in or use Forgot password.", "error");
         } else if (data.session) {
           setUser(data.user);
           showMessage("Your ConnectX account has been created successfully. Welcome!", "success");
