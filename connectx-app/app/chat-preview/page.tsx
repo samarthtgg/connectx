@@ -1868,6 +1868,44 @@ export default function ChatPreview() {
           .group-profile-form .action-btn { width:auto; }
           .group-member-actions { width:100%; padding-left:52px; }
         }
+
+        /* Refined group info sheet: compact, readable and mobile-first */
+        .group-profile-card { width:min(100%,460px); max-height:88dvh; overflow-y:auto; padding:0 0 16px; border:1px solid #30364a; border-radius:22px; background:#151927; color:#f4f5fb; box-shadow:0 24px 80px #000a; }
+        .group-profile-card .friend-profile-topbar { position:sticky; top:0; z-index:3; min-height:58px; padding:12px 18px; background:#151927; border-bottom:1px solid #2b3144; }
+        .group-profile-card .group-profile-hero { display:flex; flex-direction:column; align-items:center; gap:5px; padding:26px 20px 22px; text-align:center; }
+        .group-profile-card .group-profile-avatar { width:76px; height:76px; display:grid; place-items:center; margin-bottom:8px; border-radius:50%; background:#6556bb; color:white; font-size:34px; box-shadow:0 8px 24px #6556bb40; }
+        .group-profile-card .group-profile-hero h2 { margin:0; font-size:21px; line-height:1.25; overflow-wrap:anywhere; }
+        .group-profile-card .group-profile-hero p { margin:2px 0; color:#b4bbcd; font-size:13px; }
+        .group-profile-card .group-profile-hero small { color:#858fa7; font-size:11px; }
+        .group-profile-card .group-profile-section { margin:0 16px 12px; padding:16px; border:1px solid #2c3348; border-radius:15px; background:#1d2232; box-shadow:none; }
+        .group-profile-card .group-profile-section>small,.group-profile-card .group-participant-heading>small { display:block; margin:0 0 12px; color:#a99aff; font-size:11px; font-weight:800; letter-spacing:1px; }
+        .group-profile-card .group-profile-section p { margin:0; color:#e1e4ef; font-size:13px; line-height:1.55; overflow-wrap:anywhere; }
+        .group-profile-card .group-profile-form { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin-top:4px; }
+        .group-profile-card .group-profile-form input,.group-profile-card .group-profile-form textarea { display:block; width:100%; min-width:0; min-height:44px; margin:0; padding:12px 13px; border:1px solid #3a425a; border-radius:11px; background:#111727; color:#f5f6fc; font:inherit; font-size:14px; line-height:1.4; }
+        .group-profile-card .group-profile-form textarea { min-height:82px; resize:vertical; }
+        .group-profile-card .group-profile-form input:focus,.group-profile-card .group-profile-form textarea:focus { outline:2px solid #8878f355; border-color:#8878f3; }
+        .group-profile-card .group-profile-form .action-btn { justify-self:stretch; width:100%; min-height:44px; margin:0; padding:11px 16px; border:0; border-radius:11px; background:#7868eb; color:#fff; font-size:13px; font-weight:700; }
+        .group-profile-card .group-participant-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+        .group-profile-card .group-participant-heading>small { margin:0; }
+        .group-profile-card .group-profile-member { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:11px 0; border-bottom:1px solid #30364a; }
+        .group-profile-card .group-profile-member:last-of-type { border-bottom:0; }
+        .group-profile-card .group-member-actions { display:flex; flex-wrap:wrap; gap:8px; }
+        .group-profile-card .group-member-actions .text-btn { padding:6px 9px; border:1px solid #414965; border-radius:8px; color:#c9c0ff; }
+        .group-profile-card .group-add-members { display:grid; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid #30364a; }
+        .group-profile-card .group-add-members>strong { color:#a99aff; font-size:11px; letter-spacing:.7px; }
+        .group-profile-card .group-add-members .text-btn { justify-self:start; padding:7px 0; color:#d5d0f5; font-size:12px; }
+        .group-composer { align-items:center; }
+        .group-composer .group-more-btn { flex:0 0 42px; width:42px; height:42px; border:1px solid #414b65; border-radius:50%; background:#222b40; color:#e4dcff; font-size:24px; line-height:1; }
+        .group-composer .group-tools-panel { order:10; flex:1 0 100%; max-height:42dvh; overflow-y:auto; }
+        .group-composer .group-tools-tabs button { min-height:40px; }
+        @media(max-width:600px) {
+          .profile-modal-backdrop.group-profile-backdrop { align-items:flex-end; padding:0; }
+          .group-profile-card { width:100%; max-width:none; max-height:90dvh; border-radius:22px 22px 0 0; border-right:0; border-bottom:0; border-left:0; padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
+          .group-profile-card .group-profile-hero { padding:22px 18px 18px; }
+          .group-profile-card .group-profile-section { margin:0 12px 10px; padding:14px; }
+          .group-profile-card .group-profile-form .action-btn { width:100%; }
+          .group-profile-card .group-member-actions { width:100%; padding-left:52px; }
+        }
 </style>
     </main>
   );
