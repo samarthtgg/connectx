@@ -518,24 +518,27 @@ export default function ChatPreview() {
     loadMessages(selectedFriend.id).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "Could not load messages.");
     });
-    const channel = supabase.channel(`direct-messages-${userId}-${selectedFriend.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
-        const row = payload.new as DirectMessage;
-        const belongsToChat =
-          (row.sender_id === userId && row.receiver_id === selectedFriend.id) ||
-          (row.sender_id === selectedFriend.id && row.receiver_id === userId);
-        if (belongsToChat) {
-          void (async () => {
-            let incoming = row;
-            if (row.media_path && row.media_expires_at && new Date(row.media_expires_at).getTime() > Date.now()) {
-              const remainingSeconds = Math.max(1, Math.floor((new Date(row.media_expires_at).getTime() - Date.now()) / 1000));
-              const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrl(row.media_path, remainingSeconds);
-              incoming = { ...row, media_url: signed?.signedUrl ?? null };
-            }
-            setMessages((old) => old.some((item) => item.id === incoming.id) ? old : [...old, incoming]);
-          })();
+    const handleDirectMessage = (payload: { new: Record<string, unknown> }) => {
+      const row = payload.new as unknown as DirectMessage;
+      const belongsToChat =
+        (row.sender_id === userId && row.receiver_id === selectedFriend.id) ||
+        (row.sender_id === selectedFriend.id && row.receiver_id === userId);
+      if (!belongsToChat) return;
+      void (async () => {
+        let incoming = row;
+        if (row.media_path && row.media_expires_at && new Date(row.media_expires_at).getTime() > Date.now()) {
+          const remainingSeconds = Math.max(1, Math.floor((new Date(row.media_expires_at).getTime() - Date.now()) / 1000));
+          const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrl(row.media_path, remainingSeconds);
+          incoming = { ...row, media_url: signed?.signedUrl ?? null };
         }
-      })
+        setMessages((old) => old.some((item) => item.id === incoming.id) ? old : [...old, incoming]);
+      })();
+    };
+    // Subscribe only to rows involving this account, rather than receiving every
+    // message in the project and discarding unrelated conversations on-device.
+    const channel = supabase.channel(`direct-messages-${userId}-${selectedFriend.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `sender_id=eq.${userId}` }, handleDirectMessage)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `receiver_id=eq.${userId}` }, handleDirectMessage)
       .subscribe();
     return () => {
       active = false;
