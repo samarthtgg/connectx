@@ -270,7 +270,7 @@ export default function ChatPreview() {
   const loadBase = useCallback(async (id: string) => {
     const [profileResult, peopleResult, requestResult] = await Promise.all([
       supabase.from("profiles") .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen").eq("id", id).maybeSingle(),
-      supabase.from("profiles").select("id,username,full_name,avatar_url").neq("id", id).order("full_name"),
+      supabase.from("profiles").select("id,username,full_name,avatar_url").neq("id", id).order("full_name").limit(200),
       supabase.from("friend_requests").select("id,sender_id,receiver_id,status,created_at")
         .or(`sender_id.eq.${id},receiver_id.eq.${id}`).order("created_at", { ascending: false }),
     ]);
@@ -420,9 +420,9 @@ export default function ChatPreview() {
   }
   async function openGroup(group: ChatGroup) {
     setSelectedGroup(group); setSelectedFriend(null); setShowMobileChat(true); setTab("Messages"); setError("");
-    const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").eq("group_id", group.id).order("created_at", { ascending: true });
+    const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").eq("group_id", group.id).order("created_at", { ascending: false }).limit(100);
     if (error) { setError(error.message); return; }
-    setGroupMessages((data ?? []) as GroupMessage[]);
+    setGroupMessages(((data ?? []) as GroupMessage[]).reverse());
   }
   function startReplySwipe(event: TouchEvent, message: { id: string; content: string; sender_id: string }, kind: "direct" | "group") {
     const touch = event.touches[0];
@@ -485,7 +485,7 @@ export default function ChatPreview() {
     const { data, error: messageError } = await supabase.from("messages")
       .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired,reply_to_id,reply_to_content,reply_to_sender_id")
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${userId})`)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false }).limit(100);
     if (messageError) throw messageError;
     const pref = chatPreferences.find((item) => item.friend_id === friendId);
     const visible = (data ?? []).filter((item) => !pref?.cleared_at || new Date(item.created_at) > new Date(pref.cleared_at));
@@ -497,7 +497,7 @@ export default function ChatPreview() {
       const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrl(item.media_path, remainingSeconds);
       return { ...item, media_url: signed?.signedUrl ?? null };
     }));
-    setMessages(messagesWithUrls as DirectMessage[]);
+    setMessages((messagesWithUrls as DirectMessage[]).reverse());
     const ids = visible.map((item) => item.id);
     if (ids.length) {
       const { data: reactionRows, error: reactionError } = await supabase.from("message_reactions")
@@ -709,7 +709,7 @@ export default function ChatPreview() {
 
   const loadStatuses=useCallback(async()=>{
     if(!userId)return;
-    const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false});
+    const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false}).limit(100);
     if(error)throw error; setStatuses((data??[]) as StatusUpdate[]);
   },[userId]);
   useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);
