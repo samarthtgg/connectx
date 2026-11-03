@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import knowledgeBase from "@/data/intelligence-knowledge.json";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -23,6 +24,27 @@ function answerLocal(question: string, mode: string, context: Message[], label: 
     return {line,score:hits*3+coverage*4+phrase+Math.min(line.length,220)/100+index/1000};
   }).filter(x=>x.score>1).sort((a,b)=>b.score-a.score);
   const bullets = (items:string[]) => items.length?items.map((x,i)=>(i+1)+". "+x).join("\n"):"Nothing clear was found in the available messages.";
+  const normalize = (value: string) => value.toLowerCase()
+    .replace(/\(example\s+\d+\)/g, " ")
+    .replace(/[^a-z0-9\s']/g, " ")
+    .replace(/\s+/g, " ").trim();
+  const questionTerms = normalize(question).split(" ").filter(x => x.length > 2 && !stop.has(x));
+  const entries = (knowledgeBase as { entries: Array<{category:string;intent:string;question:string;keywords:string[];answer:string}> }).entries;
+  const knowledgeMatches = entries.map(entry => {
+    const candidate = normalize(entry.question);
+    const words = new Set(candidate.split(" ").filter(x => x.length > 2 && !stop.has(x)));
+    const keywordSet = new Set((entry.keywords || []).map(normalize).filter(Boolean));
+    const hits = questionTerms.filter(term => words.has(term) || [...keywordSet].some(k => k === term || (k.length > 4 && term.startsWith(k)))).length;
+    const exact = candidate === normalize(question);
+    const phrase = candidate.length > 5 && normalize(question).includes(candidate) ? 5 : 0;
+    const coverage = questionTerms.length ? hits / questionTerms.length : 0;
+    return {entry, score: (exact ? 20 : 0) + phrase + hits * 2.5 + coverage * 5};
+  }).sort((a,b) => b.score-a.score);
+  const bestKnowledge = knowledgeMatches[0];
+  if (bestKnowledge && (bestKnowledge.score >= 8 || bestKnowledge.score >= 6 && questionTerms.length <= 2)) {
+    return bestKnowledge.entry.answer + "\n\n<small>ConnectX Help · " + bestKnowledge.entry.category + "</small>";
+  }
+
   if (!context.length) {
     if (mode === "draft" || /draft|reply|respond/.test(q)) return "Tell me what the reply is about, or open a chat and turn on conversation context. I can prepare a draft, but I won't send it.";
     return "I can work with messages from the selected chat or group. Open one and enable “Use current conversation context”. Without a chat, I don't have conversation facts to answer from.";
