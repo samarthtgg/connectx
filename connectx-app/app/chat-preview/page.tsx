@@ -1586,7 +1586,7 @@ export default function ChatPreview() {
           .settings-panel { padding:16px 28px 30px; }.profile-field { color:#514774; }.profile-field input,.profile-field textarea { background:#fff;color:#241653;border-color:#ded9ef; }.privacy-option { border-color:#e8e3f5; }.privacy-option strong { color:#241653; }.privacy-option small { color:#777092; }
           .empty-state { color:#777092; }
           .status-compose { margin:0 4px 12px; }.status-card { margin:10px 4px; }
-          .composer { position:relative;flex-wrap:wrap; }.voice-preview { bottom:calc(100% + 6px); }.recording-label { font-size:10px; }
+          .composer { position:relative;display:flex;flex-wrap:nowrap;align-items:center;gap:8px;padding:10px 12px; }.composer .attach-btn,.composer .mic-btn { flex:0 0 40px;width:40px;height:40px; }.composer .composer-textarea { flex:1 1 0%;width:0;min-width:0;height:44px;min-height:44px;max-height:96px;padding:10px 11px;border-radius:14px;font-size:14px; }.composer .send { flex:0 0 44px;width:44px;height:44px;min-width:44px;border-radius:12px;font-size:20px; }.composer .attachment-preview { position:absolute;left:12px;right:12px;bottom:calc(100% + 6px);z-index:3;background:#242332;border-radius:12px;padding:8px; }.voice-preview { bottom:calc(100% + 6px); }.recording-label { font-size:10px; }
           .mic-btn { flex:0 0 40px;height:40px;border:0;border-radius:50%;background:#eeeaff;color:#654bc0;font-size:18px; }
           .voice-player { width:min(230px,65vw);height:36px; }
           .voice-preview { display:flex;align-items:center;gap:6px;position:absolute;bottom:72px;left:12px;right:12px;padding:8px;border-radius:12px;background:#f3f0ff; }
