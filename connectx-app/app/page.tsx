@@ -5,6 +5,9 @@ import { supabase } from "@/lib/supabase";
 
 type AuthMode = "signup" | "login" | "forgot";
 
+// Always send Supabase email links to the deployed app, never a temporary Codespaces preview URL.
+const AUTH_REDIRECT_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://connectx-sandy.vercel.app";
+
 const passwordChecks = [
   { label: "At least 8 characters", test: (value: string) => value.length >= 8 },
   { label: "One uppercase letter", test: (value: string) => /[A-Z]/.test(value) },
@@ -56,7 +59,7 @@ export default function Home() {
     try {
       if (mode === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-          redirectTo: `${window.location.origin}/reset-password`,
+          redirectTo: `${AUTH_REDIRECT_URL}/reset-password`,
         });
         if (error) throw error;
         showMessage("If an account exists for this email, a password-reset link has been sent. Check your inbox and spam folder.", "success");
@@ -64,7 +67,7 @@ export default function Home() {
         const { data, error } = await supabase.auth.signUp({
           email: normalizedEmail,
           password,
-          options: { emailRedirectTo: window.location.origin },
+          options: { emailRedirectTo: AUTH_REDIRECT_URL },
         });
         if (error) {
           const lower = error.message.toLowerCase();
@@ -119,7 +122,7 @@ export default function Home() {
       const { error } = await supabase.auth.resend({
         type: "signup",
         email: email.trim().toLowerCase(),
-        options: { emailRedirectTo: window.location.origin },
+        options: { emailRedirectTo: AUTH_REDIRECT_URL },
       });
       if (error) throw error;
       showMessage("Verification email sent. Check your inbox and spam folder.", "success");
