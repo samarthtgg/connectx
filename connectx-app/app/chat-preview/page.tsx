@@ -457,8 +457,6 @@ export default function ChatPreview() {
   async function saveGroupDetails(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!selectedGroup||!groupEditName.trim())return;const {data,error}=await supabase.from("chat_groups").update({name:groupEditName.trim(),description:groupEditDescription.trim()||null,updated_at:new Date().toISOString()}).eq("id",selectedGroup.id).select("id,name,description,created_by,created_at").single();if(error){setError(error.message);return;}setSelectedGroup(data as ChatGroup);await loadGroups();setNotice("Group info updated.");}
   async function postGroupAnnouncement(){
     const content=announcementDraft.trim();if(!selectedGroup||!userId||!content)return;
-    const isAdmin=groupMembers.some(member=>member.user_id===userId&&member.role==="admin");
-    if(!isAdmin){setError("Only group admins can send announcements.");return;}
     setBusy(true);setError("");setNotice("");
     try{
       const {data,error}=await supabase.from("chat_group_messages").insert({group_id:selectedGroup.id,sender_id:userId,content:"📢 ANNOUNCEMENT\\n"+content}).select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").single();
