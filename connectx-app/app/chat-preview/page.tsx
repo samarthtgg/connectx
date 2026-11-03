@@ -197,7 +197,10 @@ export default function ChatPreview() {
   const [statusFile,setStatusFile]=useState<File|null>(null);
   const [showStatusComposer,setShowStatusComposer]=useState(false);
   const [viewingStatusUser,setViewingStatusUser]=useState<string|null>(null);
-  const [viewingStatusIndex,setViewingStatusIndex]=useState(0);\n  const [statusReactions,setStatusReactions]=useState<{id:string;status_id:string;user_id:string;emoji:string}[]>([]);\n  const [statusReply,setStatusReply]=useState("");\n  const [statusReplyBusy,setStatusReplyBusy]=useState(false);
+  const [viewingStatusIndex,setViewingStatusIndex]=useState(0);
+  const [statusReactions,setStatusReactions]=useState<{id:string;status_id:string;user_id:string;emoji:string}[]>([]);
+  const [statusReply,setStatusReply]=useState("");
+  const [statusReplyBusy,setStatusReplyBusy]=useState(false);
   const [recording,setRecording]=useState(false);
   const [voiceBlob,setVoiceBlob]=useState<Blob|null>(null);
   const [voicePreview,setVoicePreview]=useState("");
@@ -677,7 +680,9 @@ export default function ChatPreview() {
     const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false});
     if(error)throw error; setStatuses((data??[]) as StatusUpdate[]);
   },[userId]);
-  useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);\n\n  const activeViewedStatus = viewingStatuses[viewingStatusIndex] ?? null;
+  useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);
+
+  const activeViewedStatus = viewingStatuses[viewingStatusIndex] ?? null;
   useEffect(() => {
     if (!activeViewedStatus) { setStatusReactions([]); return; }
     let cancelled = false;
