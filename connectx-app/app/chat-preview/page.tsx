@@ -95,11 +95,6 @@ export default function ChatPreview() {
   const [profileName, setProfileName] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
   const [profileBio, setProfileBio] = useState("");
-  const [accountPhone, setAccountPhone] = useState("");
-  const [phoneOtp, setPhoneOtp] = useState("");
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
-  const [phoneBusy, setPhoneBusy] = useState(false);
   const [profilePrivate, setProfilePrivate] = useState(false);
   const [showLastSeen, setShowLastSeen] = useState(true);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -315,8 +310,6 @@ export default function ChatPreview() {
         return;
       }
       setUserId(data.user.id);
-      setAccountPhone(data.user.phone ?? "");
-      setPhoneVerified(Boolean(data.user.phone_confirmed_at));
       await loadBase(data.user.id);
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "Could not load your ConnectX account.");
@@ -916,42 +909,6 @@ export default function ChatPreview() {
     }
   }
 
-  async function sendPhoneVerification() {
-    const normalized = accountPhone.trim().replace(/[\s()-]/g, "");
-    if (!/^\+[1-9]\d{7,14}$/.test(normalized)) {
-      setError("Enter your mobile number in international format, including country code (for India, +91…).");
-      return;
-    }
-    setPhoneBusy(true); setError(""); setNotice("");
-    try {
-      const { error } = await supabase.auth.updateUser({ phone: normalized });
-      if (error) throw error;
-      setAccountPhone(normalized);
-      setPhoneOtpSent(true);
-      setPhoneOtp("");
-      setNotice("Verification code sent. Enter the 6-digit code from your SMS.");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not send verification code. Check that phone authentication and SMS are configured.");
-    } finally { setPhoneBusy(false); }
-  }
-
-  async function verifyAccountPhone() {
-    const normalized = accountPhone.trim().replace(/[\s()-]/g, "");
-    if (!/^\d{6}$/.test(phoneOtp)) { setError("Enter the 6-digit verification code."); return; }
-    setPhoneBusy(true); setError(""); setNotice("");
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({ phone: normalized, token: phoneOtp, type: "phone_change" });
-      if (error) throw error;
-      setAccountPhone(data.user?.phone ?? normalized);
-      setPhoneVerified(Boolean(data.user?.phone_confirmed_at));
-      setPhoneOtpSent(false);
-      setPhoneOtp("");
-      setNotice("Mobile number verified. You can now use it for account recovery.");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The code is invalid or expired. Request a new one.");
-    } finally { setPhoneBusy(false); }
-  }
-
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!userId || savingProfile) return;
@@ -1309,16 +1266,6 @@ export default function ChatPreview() {
             <label className="profile-field">Username<input value={profileUsername} onChange={(e) => setProfileUsername(e.target.value)} maxLength={20} placeholder="username" autoCapitalize="none" /></label>
             <small className="profile-hint">3–20 characters · letters, numbers and underscores</small>
             <label className="profile-field">Bio<textarea value={profileBio} onChange={(e) => setProfileBio(e.target.value)} maxLength={160} rows={3} placeholder="A little about you…" /></label>
-            <div className="privacy-heading">ACCOUNT RECOVERY</div>
-            <label className="profile-field">Connected mobile number<input type="tel" inputMode="tel" autoComplete="tel" value={accountPhone} onChange={(e) => { setAccountPhone(e.target.value); setPhoneVerified(false); setPhoneOtpSent(false); }} placeholder="+91 9876543210" disabled={phoneVerified} /></label>
-            <small className="profile-hint">{phoneVerified ? "✓ Mobile number verified and available for account recovery." : "Verify your number with an SMS code to use phone-based password recovery."}</small>
-            {!phoneVerified && !phoneOtpSent && <button className="action-btn secondary" type="button" onClick={sendPhoneVerification} disabled={phoneBusy || savingProfile}>{phoneBusy ? "Sending code…" : "Send verification code"}</button>}
-            {!phoneVerified && phoneOtpSent && <>
-              <label className="profile-field">6-digit SMS code<input type="text" inputMode="numeric" autoComplete="one-time-code" value={phoneOtp} onChange={(e) => setPhoneOtp(e.target.value.replace(/\\D/g, "").slice(0,6))} maxLength={6} placeholder="Enter code" /></label>
-              <button className="action-btn secondary" type="button" onClick={verifyAccountPhone} disabled={phoneBusy || phoneOtp.length !== 6}>{phoneBusy ? "Verifying…" : "Verify mobile number"}</button>
-              <button className="action-btn secondary" type="button" onClick={sendPhoneVerification} disabled={phoneBusy}>Resend code</button>
-            </>}
-
             <small className="profile-hint">{profileBio.length}/160 characters</small>
             <div className="privacy-heading">APPEARANCE</div>
             <label className="privacy-option"><span><strong>Dark mode</strong><small>Use a darker theme across ConnectX</small></span><input type="checkbox" checked={darkMode} onChange={(e) => setDarkMode(e.target.checked)} /></label>
