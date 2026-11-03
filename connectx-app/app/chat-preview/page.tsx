@@ -190,7 +190,7 @@ export default function ChatPreview() {
   const [groupToolTab, setGroupToolTab] = useState<"announcement"|"poll"|null>(null);
   const [groupMembers, setGroupMembers] = useState<Array<{user_id:string;role:string;joined_at:string}>>([]);
   const [groupAnnouncements, setGroupAnnouncements] = useState<Array<{id:string;author_id:string;content:string;created_at:string}>>([]);
-  const [groupPolls, setGroupPolls] = useState<Array<{id:string;question:string;is_closed:boolean;allow_multiple_answers:boolean;hide_voter_names:boolean;options:Array<{id:string;label:string;votes:number;voted:boolean}>}>>([]);
+  const [groupPolls, setGroupPolls] = useState<Array<{id:string;question:string;is_closed:boolean;allow_multiple_answers:boolean;hide_voter_names:boolean;created_at:string;options:Array<{id:string;label:string;votes:number;voted:boolean}>}>>([]);
   const [expandedGroupPolls, setExpandedGroupPolls] = useState<string[]>([]);
   const [announcementDraft, setAnnouncementDraft] = useState("");
   const [pollQuestion, setPollQuestion] = useState("");
