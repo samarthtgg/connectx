@@ -267,6 +267,13 @@ export default function ChatPreview() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [intelligenceOpen, setIntelligenceOpen] = useState(false);
+  const [intelligenceInput, setIntelligenceInput] = useState("");
+  const [intelligenceBusy, setIntelligenceBusy] = useState(false);
+  const [intelligenceError, setIntelligenceError] = useState("");
+  const [intelligenceTurns, setIntelligenceTurns] = useState<Array<{id:string;role:"user"|"assistant";content:string}>>([]);
+  const [intelligenceUseContext, setIntelligenceUseContext] = useState(true);
+  const intelligenceScrollRef = useRef<HTMLDivElement|null>(null);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [incomingCall, setIncomingCall] = useState<CallSession | null>(null);
   const [activeCall, setActiveCall] = useState<CallSession | null>(null);
@@ -1102,6 +1109,48 @@ export default function ChatPreview() {
 
   const activeName = selectedFriend ? displayName(selectedFriend) : "";
 
+  async function askConnectXIntelligence(promptOverride?: string, mode = "assistant") {
+    const question = (promptOverride ?? intelligenceInput).trim();
+    if (!question || intelligenceBusy) return;
+    setIntelligenceInput("");
+    setIntelligenceError("");
+    setIntelligenceBusy(true);
+    setIntelligenceTurns((current)=>[...current,{id:"u-"+Date.now(),role:"user",content:question}]);
+    try {
+      const {data:sessionData,error:sessionError}=await supabase.auth.getSession();
+      if(sessionError) throw sessionError;
+      const token=sessionData.session?.access_token;
+      if(!token) throw new Error("Your session expired. Sign in again.");
+      let context:Array<{role:"user"|"assistant";content:string}>=[];
+      let contextLabel="General ConnectX assistant";
+      if(intelligenceUseContext && selectedGroup){
+        contextLabel="Group: "+selectedGroup.name;
+        context=groupMessages.filter((message)=>!message.deleted_for_everyone).slice(-35).map((message)=>({
+          role:"user" as const,
+          content:(profiles.find((profile)=>profile.id===message.sender_id)?.full_name || profiles.find((profile)=>profile.id===message.sender_id)?.username || (message.sender_id===userId?"You":"Member"))+": "+message.content
+        }));
+      } else if(intelligenceUseContext && selectedFriend){
+        contextLabel="Chat with "+displayName(selectedFriend);
+        context=messages.slice(-35).map((message)=>({
+          role:"user" as const,
+          content:(message.sender_id===userId?"You":displayName(selectedFriend))+": "+message.content
+        }));
+      }
+      const response=await fetch("/api/intelligence",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({question,mode,context,contextLabel})});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.error || "ConnectX Intelligence could not answer.");
+      setIntelligenceTurns((current)=>[...current,{id:"a-"+Date.now(),role:"assistant",content:payload.answer}]);
+    } catch(reason) {
+      setIntelligenceError(reason instanceof Error?reason.message:"Something went wrong. Try again.");
+    } finally {
+      setIntelligenceBusy(false);
+    }
+  }
+
+  useEffect(()=>{
+    if(intelligenceOpen) intelligenceScrollRef.current?.scrollTo({top:intelligenceScrollRef.current.scrollHeight,behavior:"smooth"});
+  },[intelligenceTurns,intelligenceBusy,intelligenceOpen]);
+
   const resetCall = useCallback(() => {
     pcRef.current?.close();
     pcRef.current = null;
@@ -1368,7 +1417,7 @@ export default function ChatPreview() {
       <section className={`cx-list ${showMobileChat ? "hide-mobile" : ""}`} onTouchStart={handleMainTabTouchStart} onTouchEnd={handleMainTabTouchEnd}>
         <header className="list-head">
           <div><div className="cx-brand"><span>✦</span> ConnectX</div><p>Your space to connect</p></div>
-          <button className="icon-btn header-profile" aria-label="Open settings" onClick={() => { setTab("Settings"); setShowMobileChat(false); }}>{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(myProfile?.full_name || myProfile?.username || "U")}</button>
+          <div className="list-head-actions"><button type="button" className="intelligence-launcher" aria-label="Open ConnectX Intelligence" onClick={() => setIntelligenceOpen(true)}><span className="intelligence-orb">✦</span><span className="intelligence-launcher-label">AI</span></button><button className="icon-btn header-profile" aria-label="Open settings" onClick={() => { setTab("Settings"); setShowMobileChat(false); }}>{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(myProfile?.full_name || myProfile?.username || "U")}</button></div>
         </header>
 
         {tab !== "Settings" && <div className="search-row"><div className="search-box"><span>⌕</span>
@@ -1722,6 +1771,36 @@ export default function ChatPreview() {
         <span>{error || notice}</span><button onClick={() => { setError(""); setNotice(""); }}>×</button>
       </div>}
 
+      {intelligenceOpen && <div className="intelligence-backdrop" role="dialog" aria-modal="true" aria-label="ConnectX Intelligence" onClick={() => setIntelligenceOpen(false)}>
+        <section className="intelligence-panel" onClick={(event)=>event.stopPropagation()}>
+          <header className="intelligence-head">
+            <div className="intelligence-brand"><span className="intelligence-orb large">✦</span><span><strong>ConnectX Intelligence</strong><small>Your private AI workspace</small></span></div>
+            <div className="intelligence-head-actions"><button type="button" onClick={()=>setIntelligenceTurns([])} aria-label="New conversation" title="New conversation">＋</button><button type="button" onClick={()=>setIntelligenceOpen(false)} aria-label="Close intelligence">×</button></div>
+          </header>
+          <div className="intelligence-context">
+            <label><input type="checkbox" checked={intelligenceUseContext} onChange={(event)=>setIntelligenceUseContext(event.target.checked)}/> Use current conversation context</label>
+            <span>{intelligenceUseContext?(selectedGroup?"Group · "+selectedGroup.name:selectedFriend?"Chat · "+displayName(selectedFriend):"No chat selected"):"Context off"}</span>
+          </div>
+          <div className="intelligence-thread" ref={intelligenceScrollRef}>
+            {intelligenceTurns.length===0 ? <div className="intelligence-welcome"><div className="intelligence-welcome-orb">✦</div><h2>Think beyond the chat.</h2><p>Ask questions, find decisions, turn conversations into action, and get clear answers from your chats.</p><div className="intelligence-suggestions">
+              <button type="button" onClick={()=>void askConnectXIntelligence("Summarize the current conversation. Highlight decisions, open questions and next steps.","summarize")}>✧ Summarize chat</button>
+              <button type="button" onClick={()=>void askConnectXIntelligence("Extract all action items and deadlines from this conversation. Do not guess missing details.","tasks")}>✓ Find action items</button>
+              <button type="button" onClick={()=>void askConnectXIntelligence("What decisions have been made in this conversation? Include evidence from messages.","decisions")}>◈ Find decisions</button>
+              <button type="button" onClick={()=>void askConnectXIntelligence("Draft a helpful, natural reply based on the current conversation. Do not send it.","draft")}>↗ Draft a reply</button>
+              <button type="button" onClick={()=>void askConnectXIntelligence("Create a concise timeline of important dates, plans and deadlines mentioned here.","timeline")}>◷ Build a timeline</button>
+              <button type="button" onClick={()=>void askConnectXIntelligence("Identify unresolved questions, blockers and risks in this conversation.","insights")}>⌁ Spot blockers</button>
+            </div></div> : <div className="intelligence-messages">{intelligenceTurns.map((turn)=><article key={turn.id} className={"intelligence-message "+turn.role}><span>{turn.role==="assistant"?"✦ ConnectX Intelligence":"You"}</span><p>{turn.content}</p></article>)}</div>}
+            {intelligenceBusy&&<div className="intelligence-thinking"><i/><i/><i/> Thinking through it…</div>}
+            {intelligenceError&&<div className="intelligence-error" role="alert">{intelligenceError}</div>}
+          </div>
+          <form className="intelligence-composer" onSubmit={(event)=>{event.preventDefault();void askConnectXIntelligence();}}>
+            <textarea value={intelligenceInput} onChange={(event)=>setIntelligenceInput(event.target.value)} placeholder="Ask ConnectX anything…" rows={1} maxLength={3000}/>
+            <button type="submit" disabled={!intelligenceInput.trim()||intelligenceBusy} aria-label="Send to ConnectX Intelligence">➤</button>
+          </form>
+          <p className="intelligence-disclaimer">AI can make mistakes. Check important details. Chat context is shared only when the context switch is on.</p>
+        </section>
+      </div>}
+
       <style jsx>{`
         * { box-sizing:border-box; }
         .cx-shell { height:100dvh; min-height:540px; display:flex; overflow:hidden; background:#0b1020; color:#f5f6fc; font-family:Inter,system-ui,Arial,sans-serif; }
@@ -2035,6 +2114,35 @@ export default function ChatPreview() {
         .whatsapp-poll-breakdown strong{color:#f3f5f5;font-weight:600;white-space:nowrap}
         .whatsapp-poll-breakdown small{color:#9da8ab;font-size:11px}
         @media(max-width:600px){.group-feed-card.whatsapp-poll-card{width:100%;max-width:100%;margin:12px 0;padding:17px 16px 11px;border-radius:18px}.whatsapp-poll-question{font-size:16px}.whatsapp-poll-option-top{font-size:15px}}
+
+        /* ConnectX Intelligence — Meta AI-style launcher and assistant surface */
+        .list-head-actions{display:flex;align-items:center;gap:12px}
+        .intelligence-launcher{position:relative;display:flex;align-items:center;gap:6px;padding:5px 10px 5px 5px;border:1px solid #7868eb55;border-radius:24px;background:linear-gradient(135deg,#28234b,#17243a);color:#e9e5ff;cursor:pointer;box-shadow:0 4px 16px #5d4ac522}
+        .intelligence-orb{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:conic-gradient(from 30deg,#8c78ff,#37d8c2,#5f91ff,#b37cff,#8c78ff);color:#fff;font-size:22px;box-shadow:0 0 14px #8d79ff66}
+        .intelligence-launcher-label{font-size:11px;font-weight:800;letter-spacing:.3px}
+        .intelligence-orb.large{width:42px;height:42px;flex:0 0 42px;font-size:26px}
+        .intelligence-backdrop{position:fixed;z-index:1500;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:#050711b8;backdrop-filter:blur(12px)}
+        .intelligence-panel{display:flex;width:min(100%,680px);height:min(820px,calc(100dvh - 36px));min-height:420px;flex-direction:column;overflow:hidden;border:1px solid #393654;border-radius:26px;background:#0e111b;color:#f4f2ff;box-shadow:0 30px 100px #000b}
+        .intelligence-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid #292a3a;background:linear-gradient(120deg,#17152b,#101d2a)}
+        .intelligence-brand{display:flex;align-items:center;gap:12px;min-width:0}.intelligence-brand>span:last-child{display:grid;gap:4px}.intelligence-brand strong{font-size:15px}.intelligence-brand small{color:#9ca4b7;font-size:11px}
+        .intelligence-head-actions{display:flex;gap:8px}.intelligence-head-actions button{width:36px;height:36px;border:1px solid #37374b;border-radius:50%;background:#202236;color:#e9e7f8;font-size:22px}
+        .intelligence-context{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;border-bottom:1px solid #242637;background:#141725}
+        .intelligence-context label{display:flex;align-items:center;gap:8px;color:#d5d6e5;font-size:11px}.intelligence-context input{accent-color:#8d79ff}.intelligence-context>span{max-width:48%;overflow:hidden;color:#9d9bb9;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+        .intelligence-thread{flex:1;min-height:0;overflow-y:auto;padding:20px}
+        .intelligence-welcome{display:flex;min-height:100%;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+        .intelligence-welcome-orb{display:grid;place-items:center;width:72px;height:72px;margin-bottom:18px;border-radius:24px;background:conic-gradient(from 30deg,#8c78ff,#37d8c2,#5f91ff,#b37cff,#8c78ff);color:white;font-size:42px;box-shadow:0 0 45px #8d79ff44}
+        .intelligence-welcome h2{margin:0;color:#f3f0ff;font-size:24px;letter-spacing:-.6px}.intelligence-welcome>p{max-width:390px;margin:9px 0 24px;color:#a4a7ba;font-size:13px;line-height:1.6}
+        .intelligence-suggestions{display:grid;width:min(100%,490px);grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+        .intelligence-suggestions button{min-height:52px;padding:10px 12px;border:1px solid #34364d;border-radius:14px;background:#171b2b;color:#dedcf1;text-align:left;font-size:11px;cursor:pointer;transition:border-color .15s,transform .15s}
+        .intelligence-suggestions button:active{transform:scale(.98)}.intelligence-suggestions button:hover{border-color:#8b79ef}
+        .intelligence-messages{display:grid;gap:16px}.intelligence-message{max-width:92%;padding:12px 14px;border:1px solid #303247;border-radius:16px;background:#171b2b}.intelligence-message.user{justify-self:end;border-color:#51458b;background:#282345}.intelligence-message>span{display:block;margin-bottom:7px;color:#a99bff;font-size:10px;font-weight:700}.intelligence-message p{margin:0;color:#e9e9f2;font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+        .intelligence-thinking{display:flex;align-items:center;gap:6px;margin-top:18px;color:#a6a3bd;font-size:11px}.intelligence-thinking i{width:6px;height:6px;border-radius:50%;background:#a99bff;animation:intelligence-pulse .9s infinite alternate}.intelligence-thinking i:nth-child(2){animation-delay:.2s}.intelligence-thinking i:nth-child(3){animation-delay:.4s}@keyframes intelligence-pulse{to{opacity:.25;transform:translateY(-3px)}}
+        .intelligence-error{margin-top:14px;padding:10px 12px;border:1px solid #743e51;border-radius:12px;background:#351e2a;color:#ffb9c8;font-size:11px;line-height:1.5}
+        .intelligence-composer{display:flex;align-items:flex-end;gap:10px;margin:0 16px;padding:9px 10px 9px 15px;border:1px solid #393950;border-radius:19px;background:#191c2b}
+        .intelligence-composer textarea{flex:1;min-width:0;max-height:120px;resize:vertical;border:0;outline:0;background:transparent;color:#f4f2ff;font:inherit;font-size:13px;line-height:1.5}.intelligence-composer textarea::placeholder{color:#85879d}
+        .intelligence-composer button{width:40px;height:40px;flex:0 0 40px;border:0;border-radius:13px;background:linear-gradient(135deg,#8d78f5,#6354cf);color:white;font-size:20px}.intelligence-composer button:disabled{opacity:.4}
+        .intelligence-disclaimer{margin:9px 14px calc(10px + env(safe-area-inset-bottom));color:#74798e;font-size:9px;text-align:center;line-height:1.4}
+        @media(max-width:700px){.list-head-actions{gap:10px}.intelligence-launcher{padding:4px 8px 4px 4px}.intelligence-orb{width:32px;height:32px;font-size:21px}.intelligence-backdrop{align-items:stretch;padding:0;background:#090b13}.intelligence-panel{width:100%;height:100dvh;min-height:0;border:0;border-radius:0;padding-bottom:env(safe-area-inset-bottom)}.intelligence-head{padding:calc(12px + env(safe-area-inset-top)) 15px 12px}.intelligence-thread{padding:17px 14px}.intelligence-welcome h2{font-size:22px}.intelligence-suggestions{gap:8px}.intelligence-suggestions button{min-height:54px;padding:9px;font-size:10px}.intelligence-context{padding:10px 14px}.intelligence-composer{margin:0 12px}.intelligence-disclaimer{margin-bottom:calc(9px + env(safe-area-inset-bottom))}}
       `}</style>
     </main>
   );
