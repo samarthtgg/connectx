@@ -734,12 +734,27 @@ export default function ChatPreview() {
         const {data,error} = await supabase.from("status_reactions").update({emoji}).eq("id", existing.id).eq("user_id", userId).select("id,status_id,user_id,emoji").single();
         if (error) throw error;
         setStatusReactions(old => [...old.filter(item => item.id !== existing.id), data]);
+        await sendStatusReactionMessage(activeViewedStatus, emoji);
       } else {
         const {data,error} = await supabase.from("status_reactions").insert({status_id:activeViewedStatus.id,user_id:userId,emoji}).select("id,status_id,user_id,emoji").single();
         if (error) throw error;
         setStatusReactions(old => [...old,data]);
+        await sendStatusReactionMessage(activeViewedStatus, emoji);
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not react to status."); }
+  }
+
+  async function sendStatusReactionMessage(status: StatusUpdate, emoji: string) {
+    if (!userId || !status.user_id || status.user_id === userId) return;
+    const {error} = await supabase.from("messages").insert({
+      sender_id:userId, receiver_id:status.user_id,
+      content:"Reacted " + emoji + " to your status",
+      message_type:"text",
+      reply_to_id:status.id,
+      reply_to_content:"STATUS_REACTION|" + (status.caption || (status.media_type === "video" ? "Video status" : status.media_type === "image" ? "Photo status" : "Status")),
+      reply_to_sender_id:status.user_id
+    });
+    if (error) throw error;
   }
 
   async function sendStatusReply(event: FormEvent<HTMLFormElement>) {
@@ -751,7 +766,7 @@ export default function ChatPreview() {
       const {data,error} = await supabase.from("messages").insert({
         sender_id:userId, receiver_id:status.user_id, content, message_type:"text",
         reply_to_id:status.id,
-        reply_to_content:status.caption || (status.media_type === "video" ? "Video status" : status.media_type === "image" ? "Photo status" : "Status"),
+        reply_to_content:"STATUS_REPLY|" + (status.caption || (status.media_type === "video" ? "Video status" : status.media_type === "image" ? "Photo status" : "Status")),
         reply_to_sender_id:status.user_id
       }).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if (error) throw error;
@@ -1429,7 +1444,7 @@ export default function ChatPreview() {
               const mine = message.sender_id === userId;
               const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
               return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "")} onClick={() => { if (messageSelectionMode) toggleMessageSelection(message.id); }} onTouchStart={(e) => { if (!messageSelectionMode) startReplySwipe(e, message, "direct"); }} onTouchEnd={(e) => { if (!messageSelectionMode) finishReplySwipe(e, message, "direct"); }}>
-                <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content}</span></div>}{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
+                <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_content.startsWith("STATUS_REPLY|") ? "Replied to your status" : message.reply_to_content.startsWith("STATUS_REACTION|") ? "Reacted to your status" : message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content.replace(/^STATUS_(?:REPLY|REACTION)\|/, "")}</span></div>}{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
                   <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
                   {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
