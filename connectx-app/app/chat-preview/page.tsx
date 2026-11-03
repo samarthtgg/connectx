@@ -2011,7 +2011,7 @@ export default function ChatPreview() {
         .group-action-backdrop .poll-send-btn{min-height:52px!important;margin-top:4px!important;border-radius:14px!important;background:#20bd68!important;color:#07130c!important;font-size:16px!important;font-weight:700!important}
         .group-action-backdrop .poll-send-btn:disabled{opacity:.45}.group-feed-card .group-poll-option{background:#20282d;border-color:#39444b}.group-feed-card .group-poll-option.voted{background:#173d2b;border-color:#20bd68}
         @media(max-width:600px){.group-action-backdrop{padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom))!important}.group-action-backdrop .group-tools-panel{width:100%!important;max-height:84dvh!important;border-radius:20px!important;padding:18px!important}.group-action-backdrop .group-tools-panel-head{top:-18px;margin:-18px -18px 0;padding:16px 18px}}
-</style>
+      `}</style>
     </main>
   );
 }
