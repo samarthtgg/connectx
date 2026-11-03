@@ -654,7 +654,57 @@ export default function ChatPreview() {
     const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false});
     if(error)throw error; setStatuses((data??[]) as StatusUpdate[]);
   },[userId]);
-  useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);\n\n  const activeViewedStatus = viewingStatuses[viewingStatusIndex] ?? null;\n  useEffect(() => {\n    if (!activeViewedStatus) { setStatusReactions([]); return; }\n    let cancelled = false;\n    void supabase.from("status_reactions").select("id,status_id,user_id,emoji").eq("status_id", activeViewedStatus.id).then(({data,error}) => {\n      if (cancelled) return;\n      if (error) setError(error.message); else setStatusReactions(data ?? []);\n    });\n    return () => { cancelled = true; };\n  }, [activeViewedStatus?.id]);\n\n  async function reactToStatus(emoji: string) {\n    if (!userId || !activeViewedStatus || activeViewedStatus.user_id === userId) return;\n    const existing = statusReactions.find(item => item.user_id === userId);\n    try {\n      if (existing?.emoji === emoji) {\n        const {error} = await supabase.from("status_reactions").delete().eq("id", existing.id).eq("user_id", userId);\n        if (error) throw error;\n        setStatusReactions(old => old.filter(item => item.id !== existing.id));\n      } else if (existing) {\n        const {data,error} = await supabase.from("status_reactions").update({emoji}).eq("id", existing.id).eq("user_id", userId).select("id,status_id,user_id,emoji").single();\n        if (error) throw error;\n        setStatusReactions(old => [...old.filter(item => item.id !== existing.id), data]);\n      } else {\n        const {data,error} = await supabase.from("status_reactions").insert({status_id:activeViewedStatus.id,user_id:userId,emoji}).select("id,status_id,user_id,emoji").single();\n        if (error) throw error;\n        setStatusReactions(old => [...old,data]);\n      }\n    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not react to status."); }\n  }\n\n  async function sendStatusReply(event: FormEvent<HTMLFormElement>) {\n    event.preventDefault();\n    const status = activeViewedStatus; const content = statusReply.trim();\n    if (!status || !userId || !content || status.user_id === userId || statusReplyBusy) return;\n    setStatusReplyBusy(true); setError("");\n    try {\n      const {data,error} = await supabase.from("messages").insert({\n        sender_id:userId, receiver_id:status.user_id, content, message_type:"text",\n        reply_to_id:status.id,\n        reply_to_content:status.caption || (status.media_type === "video" ? "Video status" : status.media_type === "image" ? "Photo status" : "Status"),\n        reply_to_sender_id:status.user_id\n      }).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();\n      if (error) throw error;\n      const recipient = profiles.find(profile => profile.id === status.user_id);\n      setStatusReply(""); setViewingStatusUser(null);\n      if (recipient) { await chooseFriend(recipient); setMessages(old => [...old.filter(item => item.id !== data.id), data as DirectMessage]); }\n      setNotice("Status reply sent.");\n    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not reply to status."); }\n    finally { setStatusReplyBusy(false); }\n  }
+  useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);\n\n  const activeViewedStatus = viewingStatuses[viewingStatusIndex] ?? null;
+  useEffect(() => {
+    if (!activeViewedStatus) { setStatusReactions([]); return; }
+    let cancelled = false;
+    void supabase.from("status_reactions").select("id,status_id,user_id,emoji").eq("status_id", activeViewedStatus.id).then(({data,error}) => {
+      if (cancelled) return;
+      if (error) setError(error.message); else setStatusReactions(data ?? []);
+    });
+    return () => { cancelled = true; };
+  }, [activeViewedStatus?.id]);
+
+  async function reactToStatus(emoji: string) {
+    if (!userId || !activeViewedStatus || activeViewedStatus.user_id === userId) return;
+    const existing = statusReactions.find(item => item.user_id === userId);
+    try {
+      if (existing?.emoji === emoji) {
+        const {error} = await supabase.from("status_reactions").delete().eq("id", existing.id).eq("user_id", userId);
+        if (error) throw error;
+        setStatusReactions(old => old.filter(item => item.id !== existing.id));
+      } else if (existing) {
+        const {data,error} = await supabase.from("status_reactions").update({emoji}).eq("id", existing.id).eq("user_id", userId).select("id,status_id,user_id,emoji").single();
+        if (error) throw error;
+        setStatusReactions(old => [...old.filter(item => item.id !== existing.id), data]);
+      } else {
+        const {data,error} = await supabase.from("status_reactions").insert({status_id:activeViewedStatus.id,user_id:userId,emoji}).select("id,status_id,user_id,emoji").single();
+        if (error) throw error;
+        setStatusReactions(old => [...old,data]);
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not react to status."); }
+  }
+
+  async function sendStatusReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const status = activeViewedStatus; const content = statusReply.trim();
+    if (!status || !userId || !content || status.user_id === userId || statusReplyBusy) return;
+    setStatusReplyBusy(true); setError("");
+    try {
+      const {data,error} = await supabase.from("messages").insert({
+        sender_id:userId, receiver_id:status.user_id, content, message_type:"text",
+        reply_to_id:status.id,
+        reply_to_content:status.caption || (status.media_type === "video" ? "Video status" : status.media_type === "image" ? "Photo status" : "Status"),
+        reply_to_sender_id:status.user_id
+      }).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
+      if (error) throw error;
+      const recipient = profiles.find(profile => profile.id === status.user_id);
+      setStatusReply(""); setViewingStatusUser(null);
+      if (recipient) { await chooseFriend(recipient); setMessages(old => [...old.filter(item => item.id !== data.id), data as DirectMessage]); }
+      setNotice("Status reply sent.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not reply to status."); }
+    finally { setStatusReplyBusy(false); }
+  }
 
   async function publishStatus(event:FormEvent<HTMLFormElement>){
     event.preventDefault(); if(!userId||(!statusCaption.trim()&&!statusFile))return;
@@ -1188,7 +1238,16 @@ export default function ChatPreview() {
                   {viewingStatuses[viewingStatusIndex].media_type==="video" && viewingStatuses[viewingStatusIndex].media_url ? <video key={viewingStatuses[viewingStatusIndex].id} src={viewingStatuses[viewingStatusIndex].media_url} controls autoPlay playsInline /> : viewingStatuses[viewingStatusIndex].media_type==="image" && viewingStatuses[viewingStatusIndex].media_url ? <img src={viewingStatuses[viewingStatusIndex].media_url} alt="Status" /> : <p>{viewingStatuses[viewingStatusIndex].caption}</p>}
                 </div>
                 {viewingStatuses[viewingStatusIndex].media_type!=="text" && viewingStatuses[viewingStatusIndex].caption && <div className="status-viewer-caption">{viewingStatuses[viewingStatusIndex].caption}</div>}
-                {viewingStatusUser !== userId && <div className="status-interaction-bar" onClick={e => e.stopPropagation()}>\n                  <div className="status-emoji-bar" aria-label="React to status">\n                    {["❤️","😂","😮","😢","🙏","🔥","👏","👍"].map(emoji => <button type="button" key={emoji} className={statusReactions.some(item => item.user_id === userId && item.emoji === emoji) ? "selected" : ""} onClick={() => void reactToStatus(emoji)} aria-label={"React "+emoji}>{emoji}</button>)}\n                  </div>\n                  <form className="status-reply-form" onSubmit={sendStatusReply}>\n                    <input value={statusReply} onChange={e => setStatusReply(e.target.value)} placeholder="Reply to status…" maxLength={1000} aria-label="Reply to status" />\n                    <button type="submit" disabled={!statusReply.trim() || statusReplyBusy} aria-label="Send status reply">{statusReplyBusy ? "…" : "➤"}</button>\n                  </form>\n                </div>}\n                <div className="status-viewer-nav">
+                {viewingStatusUser !== userId && <div className="status-interaction-bar" onClick={e => e.stopPropagation()}>
+                  <div className="status-emoji-bar" aria-label="React to status">
+                    {["❤️","😂","😮","😢","🙏","🔥","👏","👍"].map(emoji => <button type="button" key={emoji} className={statusReactions.some(item => item.user_id === userId && item.emoji === emoji) ? "selected" : ""} onClick={() => void reactToStatus(emoji)} aria-label={"React "+emoji}>{emoji}</button>)}
+                  </div>
+                  <form className="status-reply-form" onSubmit={sendStatusReply}>
+                    <input value={statusReply} onChange={e => setStatusReply(e.target.value)} placeholder="Reply to status…" maxLength={1000} aria-label="Reply to status" />
+                    <button type="submit" disabled={!statusReply.trim() || statusReplyBusy} aria-label="Send status reply">{statusReplyBusy ? "…" : "➤"}</button>
+                  </form>
+                </div>}
+                <div className="status-viewer-nav">
                   <button type="button" disabled={viewingStatusIndex===0} onClick={() => setViewingStatusIndex(i=>Math.max(0,i-1))}>‹</button>
                   <button type="button" disabled={viewingStatusIndex===viewingStatuses.length-1} onClick={() => setViewingStatusIndex(i=>Math.min(viewingStatuses.length-1,i+1))}>›</button>
                 </div>
