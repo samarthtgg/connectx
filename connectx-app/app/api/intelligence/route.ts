@@ -42,7 +42,7 @@ function answerLocal(question: string, mode: string, context: Message[], label: 
   }).sort((a,b) => b.score-a.score);
   const bestKnowledge = knowledgeMatches[0];
   if (bestKnowledge && (bestKnowledge.score >= 8 || bestKnowledge.score >= 6 && questionTerms.length <= 2)) {
-    return bestKnowledge.entry.answer + "\n\n<small>ConnectX Help · " + bestKnowledge.entry.category + "</small>";
+    return bestKnowledge.entry.answer + "\n\nConnectX Help · " + bestKnowledge.entry.category;
   }
 
   if (!context.length) {
