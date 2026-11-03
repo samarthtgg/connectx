@@ -334,14 +334,16 @@ export default function ChatPreview() {
     setStatusReply("");
   }
   function handleStatusTouchStart(event: TouchEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest("button,input,textarea,video,a")) return;
+    if ((event.target as HTMLElement).closest("button,input,textarea,a")) return;
     statusTouchStartX.current = event.touches[0]?.clientX ?? null;
   }
   function handleStatusTouchEnd(event: TouchEvent<HTMLDivElement>) {
     const start = statusTouchStartX.current;
     statusTouchStartX.current = null;
     if (start === null) return;
-    const delta = event.changedTouches[0]?.clientX - start;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const delta = touch.clientX - start;
     if (Math.abs(delta) < 65) return;
     moveStatusUser(delta < 0 ? 1 : -1);
   }
