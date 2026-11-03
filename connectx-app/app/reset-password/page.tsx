@@ -27,13 +27,13 @@ export default function ResetPasswordPage() {
   const validPassword = passwordRules.every((rule) => rule(password));
 
   function normalizedPhone() {
-    return phone.trim().replace(/[\\s()-]/g, "");
+    return phone.trim().replace(/[\s()-]/g, "");
   }
 
   async function requestCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const number = normalizedPhone();
-    if (!/^\\+[1-9]\\d{7,14}$/.test(number)) {
+    if (!/^\+[1-9]\d{7,14}$/.test(number)) {
       setMessage("Enter the mobile number with country code, for example +91 followed by your 10-digit number.");
       return;
     }
@@ -53,7 +53,7 @@ export default function ResetPasswordPage() {
 
   async function verifyCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!/^\\d{6}$/.test(otp)) { setMessage("Enter the 6-digit code from your SMS."); return; }
+    if (!/^\d{6}$/.test(otp)) { setMessage("Enter the 6-digit code from your SMS."); return; }
     setLoading(true); setMessage("");
     try {
       const { error } = await supabase.auth.verifyOtp({
