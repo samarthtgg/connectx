@@ -1797,7 +1797,7 @@ export default function ChatPreview() {
             <textarea value={intelligenceInput} onChange={(event)=>setIntelligenceInput(event.target.value)} placeholder="Ask ConnectX anything…" rows={1} maxLength={3000}/>
             <button type="submit" disabled={!intelligenceInput.trim()||intelligenceBusy} aria-label="Send to ConnectX Intelligence">➤</button>
           </form>
-          <p className="intelligence-disclaimer">AI can make mistakes. Check important details. Chat context is shared only when the context switch is on.</p>
+          <p className="intelligence-disclaimer">Free on-device-style tools; no external AI API. Uses recent chat context only when the context switch is on. Results are rule-based, not generative AI.</p>
         </section>
       </div>}
 
