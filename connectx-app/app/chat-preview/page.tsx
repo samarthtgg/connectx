@@ -110,6 +110,7 @@ export default function ChatPreview() {
   const [messageSelectionMode, setMessageSelectionMode] = useState(false);
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [showArchivedChats, setShowArchivedChats] = useState(false);
+  const [chatActionMenuId, setChatActionMenuId] = useState<string | null>(null);
   const [chatLockIds, setChatLockIds] = useState<string[]>([]);
   const [chatLockCredential, setChatLockCredential] = useState<string | null>(null);
   const [chatLockUnlocked, setChatLockUnlocked] = useState(false);
@@ -958,9 +959,8 @@ export default function ChatPreview() {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
     longPressTimer.current = setTimeout(() => {
       longPressTriggered.current = true;
-      setSelectionMode(true);
-      setSelectedChats((old) => old.includes(friendId) ? old : [...old, friendId]);
-    }, 550);
+      setChatActionMenuId(friendId);
+    }, 1000);
   }
   function endLongPress() {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
@@ -1758,15 +1758,16 @@ export default function ChatPreview() {
               <button className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""} ${selectedChats.includes(friend.id) ? "chat-selected" : ""}`}
                 onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
                 onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
-                onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } chooseFriend(friend); }}>
+                onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } setChatActionMenuId(null); chooseFriend(friend); }}>
                 {friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}
                 <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{friend.username ? `@${friend.username}` : "Tap to open chat"}{preference?.unread_at ? " · Unread" : ""}</small></span>
               </button>
-              <div className="chat-row-tools">
-                <button type="button" className="text-btn" onClick={() => toggleChatLock("friend:" + friend.id)}>{chatLockIds.includes("friend:" + friend.id) ? "Unlock" : "Lock"}</button>\n                <button type="button" className="text-btn" onClick={() => void togglePinnedChat(friend.id)}>{preference?.is_pinned ? "Unpin" : "Pin"}</button>
-                <button type="button" className="text-btn" onClick={() => void toggleUnreadChat(friend.id)}>{preference?.unread_at ? "Mark read" : "Unread"}</button>
-                <button type="button" className="text-btn" onClick={() => void toggleArchivedChat(friend.id)}>{preference?.is_archived ? "Restore" : "Archive"}</button>
-              </div>
+              {chatActionMenuId === friend.id && <div className="chat-row-tools">
+                <button type="button" className="text-btn" onClick={() => { toggleChatLock("friend:" + friend.id); setChatActionMenuId(null); }}>{chatLockIds.includes("friend:" + friend.id) ? "Unlock" : "Chat Lock"}</button>
+                <button type="button" className="text-btn" onClick={() => { void togglePinnedChat(friend.id); setChatActionMenuId(null); }}>{preference?.is_pinned ? "Unpin" : "Pin"}</button>
+                <button type="button" className="text-btn" onClick={() => { void toggleUnreadChat(friend.id); setChatActionMenuId(null); }}>{preference?.unread_at ? "Mark read" : "Mark as read"}</button>
+                <button type="button" className="text-btn" onClick={() => { void toggleArchivedChat(friend.id); setChatActionMenuId(null); }}>{preference?.is_archived ? "Restore" : "Archive"}</button>
+              </div>}
               </div>;
             })}
             {(showArchivedChats ? archivedFriends : friends).length === 0 && <p className="empty">{showArchivedChats ? "No archived chats." : "No friends yet. Open Friends to find people and send a request."}</p>}
