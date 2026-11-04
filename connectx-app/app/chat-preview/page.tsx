@@ -347,9 +347,10 @@ export default function ChatPreview() {
         .eq("is_private", false).neq("id", userId).order("full_name").limit(100);
       if (peopleError) throw peopleError;
       setProfiles((data ?? []) as Profile[]);
-    } finally {
-      setProfilesLoading(false);
       setProfilesLoaded(true);
+    } finally {
+      // Keep the directory retryable when the request fails.
+      setProfilesLoading(false);
     }
   }, [userId, profilesLoading, profilesLoaded]);
 
