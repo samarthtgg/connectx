@@ -1634,6 +1634,11 @@ export default function ChatPreview() {
             <label className="privacy-option"><span><strong>Show last seen</strong><small>Allow friends to see your last active time when presence is added</small></span><input type="checkbox" checked={showLastSeen} onChange={(e) => setShowLastSeen(e.target.checked)} /></label>
             <button className="action-btn" type="submit" disabled={savingProfile}>{savingProfile ? "Saving…" : "Save profile"}</button>
             <button className="action-btn secondary" type="button" onClick={signOut} disabled={busy || savingProfile}>Sign out</button>
+            <div className="app-version-card" aria-label="Application version">
+              <span className="app-version-mark">CX</span>
+              <span className="app-version-copy"><strong>ConnectX</strong><small>Current app release</small></span>
+              <span className="app-version-number">v0.1.1 · Beta</span>
+            </div>
           </form>
         ) : tab === "Status" ? (
           <div className="cx-chats status-panel">
@@ -2074,6 +2079,10 @@ export default function ChatPreview() {
 .settings-panel .mini-btn{min-height:38px;padding:0 16px;border-radius:12px;background:linear-gradient(135deg,#a48aff,#7155dc);box-shadow:0 5px 15px #7658d744;font-size:11px}
 .settings-panel .action-btn{min-height:47px;border-radius:14px;background:linear-gradient(110deg,#9b7cff,#7255db);box-shadow:0 8px 22px #7255db44;font-size:13px;letter-spacing:.2px}.settings-panel .action-btn.secondary{margin-top:0;border:1px solid #403a55;background:#211f30;box-shadow:none;color:#d5cbed}
 .settings-panel .profile-hint{font-size:10px;line-height:1.5;color:#a19ab5;margin:0 2px}.settings-panel .privacy-option input{width:21px;height:21px;cursor:pointer;accent-color:#9b7cff}
+.app-version-card{display:flex;align-items:center;gap:11px;margin:8px 0 4px;padding:12px;border:1px solid #302b43;border-radius:14px;background:linear-gradient(120deg,#1b1928,#15141f);text-align:left}
+.app-version-mark{width:34px;height:34px;display:grid;place-items:center;flex:0 0 34px;border-radius:10px;background:#30264b;color:#c8b7ff;font-size:11px;font-weight:900;letter-spacing:-.5px}
+.app-version-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.app-version-copy strong{color:#eee9ff;font-size:11px}.app-version-copy small{color:#9e97b2;font-size:9px;line-height:1.35}
+.app-version-number{white-space:nowrap;color:#c2b3f8;font-size:10px;font-weight:750}
 /* Compact settings layout */
         .settings-panel.profile-editor{padding:10px 14px calc(18px + env(safe-area-inset-bottom));gap:8px;border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
         .settings-panel.profile-editor:before{display:none}
