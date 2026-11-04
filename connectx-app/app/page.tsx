@@ -108,7 +108,7 @@ export default function Home() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Something went wrong. Please try again.";
       showMessage(message.toLowerCase().includes("email rate limit exceeded")
-        ? "Supabase email rate limit exceeded. Signup emails are still enabled. Disable Confirm email in Supabase and wait for the temporary limit to reset before retrying."
+        ? "Supabase has temporarily limited verification emails. Wait for the limit to reset before requesting another email. Keep email confirmation enabled; do not disable this security setting."
         : message, "error");
     } finally {
       setLoading(false);
