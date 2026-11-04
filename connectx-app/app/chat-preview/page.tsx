@@ -377,9 +377,9 @@ export default function ChatPreview() {
     [requests, userId],
   );
   const friends = useMemo(
-    () => profiles.filter((profile) => acceptedIds.has(profile.id) && !chatPreferences.find((pref) => pref.friend_id === profile.id)?.hidden_at && !chatPreferences.find((pref) => pref.friend_id === profile.id)?.is_archived)
+    () => profiles.filter((profile) => acceptedIds.has(profile.id) && !chatLockIds.includes("friend:" + profile.id) && !chatPreferences.find((pref) => pref.friend_id === profile.id)?.hidden_at && !chatPreferences.find((pref) => pref.friend_id === profile.id)?.is_archived)
       .sort((a, b) => Number(!!chatPreferences.find((pref) => pref.friend_id === b.id)?.is_pinned) - Number(!!chatPreferences.find((pref) => pref.friend_id === a.id)?.is_pinned)),
-    [profiles, acceptedIds, chatPreferences],
+    [profiles, acceptedIds, chatPreferences, chatLockIds],
   );
   const archivedFriends = useMemo(
     () => profiles.filter((profile) => acceptedIds.has(profile.id) && !!chatPreferences.find((pref) => pref.friend_id === profile.id)?.is_archived),
@@ -1736,15 +1736,15 @@ export default function ChatPreview() {
             {showLockedChats && chatLockUnlocked && chatLockIds.map((id) => {
               if (id.startsWith("friend:")) {
                 const friend = profiles.find(p => p.id === id.slice(7));
-                return friend ? <button type="button" className="chat-row" key={id} onClick={() => chooseFriend(friend)}><span className="avatar">{initials(displayName(friend))}</span><span className="chat-info"><strong>{displayName(friend)}</strong><small>Locked private chat</small></span></button> : null;
+                return friend ? <div className="chat-row-wrap" key={id}><button type="button" className="chat-row" onClick={() => chooseFriend(friend)}><span className="avatar">{initials(displayName(friend))}</span><span className="chat-info"><strong>{displayName(friend)}</strong><small>Locked private chat</small></span></button><button type="button" className="text-btn" onClick={() => toggleChatLock(id)}>Unlock</button></div> : null;
               }
               const group = groups.find(g => g.id === id.slice(6));
-              return group ? <button type="button" className="group-row" key={id} onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>Locked group</small></span></button> : null;
+              return group ? <div className="chat-row-wrap" key={id}><button type="button" className="group-row" onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>Locked group</small></span></button><button type="button" className="text-btn" onClick={() => toggleChatLock(id)}>Unlock</button></div> : null;
             })}
             {showLockedChats && chatLockUnlocked && chatLockIds.length === 0 && <p className="empty">No locked chats yet.</p>}
             {groups.length > 0 && <>
               <div className="groups-heading"><strong>GROUPS</strong><span>{groups.length}</span></div>
-              {groups.map((group) => (
+              {groups.filter(group => !chatLockIds.includes("group:" + group.id)).map((group) => (
                 <button type="button" className="group-row" key={group.id} onClick={() => void openGroup(group)}>
                   <span className="group-avatar">♧</span>
                   <span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span>
