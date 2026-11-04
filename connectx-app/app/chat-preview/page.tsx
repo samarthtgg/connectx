@@ -272,6 +272,8 @@ export default function ChatPreview() {
   const chunksRef=useRef<Blob[]>([]);
   const statusInputRef=useRef<HTMLInputElement|null>(null);
   const [search, setSearch] = useState("");
+  const [usernameSearchProfile, setUsernameSearchProfile] = useState<Profile | null>(null);
+  const [usernameSearchLoading, setUsernameSearchLoading] = useState(false);
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState("");
@@ -424,15 +426,36 @@ export default function ChatPreview() {
     if (Math.abs(delta) < 65) return;
     moveStatusUser(delta < 0 ? 1 : -1);
   }
+  useEffect(() => {
+    if (tab !== "Friends") { setUsernameSearchProfile(null); return; }
+    const username = search.trim().replace(/^@/, "").toLowerCase();
+    if (!username) { setUsernameSearchProfile(null); setUsernameSearchLoading(false); return; }
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) { setUsernameSearchProfile(null); setUsernameSearchLoading(false); return; }
+    let active = true;
+    setUsernameSearchLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data, error: searchError } = await supabase.from("profiles")
+          .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen")
+          .eq("username", username).neq("id", userId).maybeSingle();
+        if (searchError) throw searchError;
+        if (active) setUsernameSearchProfile(data as Profile | null);
+      } catch (reason) {
+        if (active) { setUsernameSearchProfile(null); setError(reason instanceof Error ? reason.message : "Could not search this username."); }
+      } finally {
+        if (active) setUsernameSearchLoading(false);
+      }
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [tab, search, userId]);
   const filteredProfiles = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return profiles.filter((p) => {
-      const name = displayName(p).toLowerCase();
-      const username = (p.username ?? "").toLowerCase();
-      if (!q) return !p.is_private;
-      return username === q.replace(/^@/, "");
-    });
-  }, [profiles, search]);
+    if (!q) return profiles.filter((p) => !p.is_private);
+    const exact = q.replace(/^@/, "");
+    const localMatch = profiles.find((p) => (p.username ?? "").toLowerCase() === exact);
+    const result = usernameSearchProfile ?? localMatch;
+    return result ? [result] : [];
+  }, [profiles, search, usernameSearchProfile]);
 
 
   const loadGroups = useCallback(async () => {
@@ -1729,7 +1752,8 @@ export default function ChatPreview() {
                 <button className="mini-btn" disabled={busy || !!relation} onClick={() => sendRequest(profile)}>{label}</button>
               </div>;
             })}
-            {filteredProfiles.length === 0 && <p className="empty">No users found.</p>}
+            {usernameSearchLoading && <p className="empty">Searching username…</p>}
+            {filteredProfiles.length === 0 && !usernameSearchLoading && <p className="empty">{search.trim() ? "No profile found for this exact username." : "No public profiles found."}</p>}
             <div className="section-caption request-caption">INCOMING REQUESTS · {incoming.length}</div>
             {incoming.map((request) => {
               const sender = profiles.find((p) => p.id === request.sender_id);
