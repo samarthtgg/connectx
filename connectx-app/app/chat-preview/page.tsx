@@ -1017,28 +1017,46 @@ export default function ChatPreview() {
 
   async function sendMessage(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
-    const content = draft.trim();
+    const text = draft.trim();
     const file = attachment;
-    if (!selectedFriend || !userId || busy) return;
-    if (!content && !file) { setError("Choose a photo or enter a message before sending."); return; }
-    setBusy(true); setError("");
+    const friend = selectedFriend;
+    if (!friend || !userId || busy) return;
+    if (!text && !file) { setError("Choose a photo or enter a message before sending."); return; }
+
+    // Text messages appear immediately; the database insert is reconciled by id
+    // when it returns or when the realtime event arrives first.
+    const optimisticId = `optimistic-${crypto.randomUUID()}`;
+    const reply = replyTarget?.kind === "direct" ? replyTarget : null;
+    if (!file) {
+      const optimistic: DirectMessage = {
+        id: optimisticId,
+        sender_id: userId,
+        receiver_id: friend.id,
+        content: text,
+        created_at: new Date().toISOString(),
+        read_at: null,
+        message_type: "text",
+        reply_to_id: reply?.id ?? null,
+        reply_to_content: reply?.content ?? null,
+        reply_to_sender_id: reply?.sender_id ?? null,
+      };
+      setMessages((old) => [...old, optimistic]);
+    }
+
+    setBusy(true);
+    setError("");
     let uploadedPath: string | null = null;
     try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!authData.user || authData.user.id !== userId) {
-        throw new Error("Your active sign-in session does not match the account loaded by ConnectX. Sign out and sign in again.");
-      }
-
       let insertPayload: Record<string, unknown> = {
-        sender_id: authData.user.id,
-        reply_to_id: replyTarget?.kind === "direct" ? replyTarget.id : null,
-        reply_to_content: replyTarget?.kind === "direct" ? replyTarget.content : null,
-        reply_to_sender_id: replyTarget?.kind === "direct" ? replyTarget.sender_id : null,
-        receiver_id: selectedFriend.id,
-        content,
+        sender_id: userId,
+        receiver_id: friend.id,
+        reply_to_id: reply?.id ?? null,
+        reply_to_content: reply?.content ?? null,
+        reply_to_sender_id: reply?.sender_id ?? null,
+        content: text,
         message_type: "text",
       };
+
       if (file) {
         const allowedTypes = ["image/jpeg", "image/png", "image/webp", "video/mp4"];
         if (!allowedTypes.includes(file.type)) throw new Error("Choose a JPG, PNG, WEBP image or MP4 video.");
@@ -1050,12 +1068,12 @@ export default function ChatPreview() {
         if (uploadError) throw uploadError;
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
         insertPayload = {
-          sender_id: authData.user.id,
-          receiver_id: selectedFriend.id,
-          reply_to_id: replyTarget?.kind === "direct" ? replyTarget.id : null,
-          reply_to_content: replyTarget?.kind === "direct" ? replyTarget.content : null,
-          reply_to_sender_id: replyTarget?.kind === "direct" ? replyTarget.sender_id : null,
-          content: content || file.name,
+          sender_id: userId,
+          receiver_id: friend.id,
+          reply_to_id: reply?.id ?? null,
+          reply_to_content: reply?.content ?? null,
+          reply_to_sender_id: reply?.sender_id ?? null,
+          content: text || file.name,
           message_type: file.type.startsWith("video/") ? "video" : "image",
           media_path: uploadedPath,
           media_expires_at: expiresAt,
@@ -1067,21 +1085,32 @@ export default function ChatPreview() {
         .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired,reply_to_id,reply_to_content,reply_to_sender_id")
         .single();
       if (insertError) throw insertError;
-      if (data) {
-        let sentMessage = data as DirectMessage;
-        if (sentMessage.media_path && sentMessage.media_expires_at) {
-          const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media")
-            .createSignedUrl(sentMessage.media_path, Math.max(1, Math.floor((new Date(sentMessage.media_expires_at).getTime() - Date.now()) / 1000)));
-          sentMessage = { ...sentMessage, media_url: signed?.signedUrl ?? null };
-        }
-        setMessages((old) => old.some((item) => item.id === sentMessage.id) ? old : [...old, sentMessage]);
-        setDraft("");
-        setReplyTarget(null);
-        setAttachment(null);
-        if (attachmentInputRef.current) attachmentInputRef.current.value = "";
-        if (typingChannel.current) void typingChannel.current.send({ type: "broadcast", event: "typing", payload: { typing: false } });
+      if (!data) throw new Error("Message was not saved. Please try again.");
+
+      const sentMessage = data as DirectMessage;
+      setMessages((old) => {
+        const withoutOptimistic = old.filter((item) => item.id !== optimisticId);
+        return withoutOptimistic.some((item) => item.id === sentMessage.id)
+          ? withoutOptimistic.map((item) => item.id === sentMessage.id ? { ...item, ...sentMessage } : item)
+          : [...withoutOptimistic, sentMessage];
+      });
+      setDraft("");
+      setReplyTarget(null);
+      setAttachment(null);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+      if (typingChannel.current) void typingChannel.current.send({ type: "broadcast", event: "typing", payload: { typing: false } });
+
+      // Do not make the message bubble wait for a signed media URL.
+      if (sentMessage.media_path && sentMessage.media_expires_at) {
+        const remaining = Math.max(1, Math.floor((new Date(sentMessage.media_expires_at).getTime() - Date.now()) / 1000));
+        void supabase.storage.from("connectx-temporary-chat-media")
+          .createSignedUrl(sentMessage.media_path, remaining)
+          .then(({ data: signed }) => {
+            if (signed?.signedUrl) setMessages((old) => old.map((item) => item.id === sentMessage.id ? { ...item, media_url: signed.signedUrl } : item));
+          });
       }
     } catch (reason) {
+      setMessages((old) => old.filter((item) => item.id !== optimisticId));
       if (uploadedPath) await supabase.storage.from("connectx-temporary-chat-media").remove([uploadedPath]);
       setError(reason instanceof Error ? reason.message : "Could not send message.");
     } finally {
