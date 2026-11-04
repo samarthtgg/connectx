@@ -1762,6 +1762,11 @@ export default function ChatPreview() {
               ))}
             </>}
             <div className="section-caption">CHATS <button type="button" className="text-btn" onClick={() => setShowArchivedChats((value) => !value)}>{showArchivedChats ? "Back to chats" : "Archive (" + archivedFriends.length + ")"}</button></div>
+            {!showArchivedChats && myProfile && <button type="button" className={"chat-row self-chat-row " + (selectedFriend?.id === userId ? "active" : "")} onClick={() => { setChatActionMenuId(null); chooseFriend(myProfile); }}>
+              {myProfile.avatar_url ? <img className="avatar chat-row-photo" src={myProfile.avatar_url} alt="Your profile photo" /> : <span className="avatar">{initials(displayName(myProfile))}</span>}
+              <span className="chat-info"><strong>{displayName(myProfile)} (You)</strong><small>Personal notes · Message yourself</small></span>
+              <span className="self-chat-badge">You</span>
+            </button>}
             {(showArchivedChats ? archivedFriends : friends).map((friend) => {
               const preference = chatPreferences.find((item) => item.friend_id === friend.id);
               return <div className="chat-row-wrap" key={friend.id}>
