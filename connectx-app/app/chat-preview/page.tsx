@@ -103,6 +103,8 @@ export default function ChatPreview() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
+  const [profilesLoadAttempted, setProfilesLoadAttempted] = useState(false);
+  const [profilesLoadError, setProfilesLoadError] = useState("");
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -339,7 +341,9 @@ export default function ChatPreview() {
   }, []);
 
   const loadPublicProfiles = useCallback(async () => {
-    if (!userId || profilesLoading || profilesLoaded) return;
+    if (!userId || profilesLoading || profilesLoaded || profilesLoadAttempted) return;
+    setProfilesLoadAttempted(true);
+    setProfilesLoadError("");
     setProfilesLoading(true);
     try {
       const { data, error: peopleError } = await supabase.from("profiles")
@@ -348,17 +352,24 @@ export default function ChatPreview() {
       if (peopleError) throw peopleError;
       setProfiles((data ?? []) as Profile[]);
       setProfilesLoaded(true);
+    } catch (reason) {
+      setProfilesLoadError(reason instanceof Error ? reason.message : "Could not load people.");
+      throw reason;
     } finally {
-      // Keep the directory retryable when the request fails.
       setProfilesLoading(false);
     }
-  }, [userId, profilesLoading, profilesLoaded]);
+  }, [userId, profilesLoading, profilesLoaded, profilesLoadAttempted]);
 
   useEffect(() => {
-    if (tab === "Friends" && userId && !profilesLoaded && !profilesLoading) {
-      void loadPublicProfiles().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load people."));
+    if (tab !== "Friends") {
+      setProfilesLoadAttempted(false);
+      setProfilesLoadError("");
+      return;
     }
-  }, [tab, userId, profilesLoaded, profilesLoading, loadPublicProfiles]);
+    if (userId && !profilesLoaded && !profilesLoading && !profilesLoadAttempted) {
+      void loadPublicProfiles().catch(() => {});
+    }
+  }, [tab, userId, profilesLoaded, profilesLoading, profilesLoadAttempted, loadPublicProfiles]);
   const refreshRequests = useCallback(async () => {
     if (!userId) return;
     const { data, error: requestError } = await supabase.from("friend_requests")
@@ -1809,7 +1820,8 @@ export default function ChatPreview() {
             })}
             {usernameSearchLoading && <p className="empty">Searching username…</p>}
             {profilesLoading && !search.trim() && <p className="empty">Loading people…</p>}
-            {filteredProfiles.length === 0 && !usernameSearchLoading && !profilesLoading && <p className="empty">{search.trim() ? "No profile found for this exact username." : "No public profiles found."}</p>}
+            {profilesLoadError && !search.trim() && <p className="empty" role="alert">{profilesLoadError} <button type="button" className="text-btn" onClick={() => { setProfilesLoadAttempted(false); setProfilesLoadError(""); }}>Retry</button></p>}
+            {filteredProfiles.length === 0 && !usernameSearchLoading && !profilesLoading && (search.trim() || !profilesLoadError) && <p className="empty">{search.trim() ? "No profile found for this exact username." : "No public profiles found."}</p>}
             <div className="section-caption request-caption">INCOMING REQUESTS · {incoming.length}</div>
             {incoming.map((request) => {
               const sender = profiles.find((p) => p.id === request.sender_id);
