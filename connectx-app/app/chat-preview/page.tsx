@@ -604,14 +604,52 @@ export default function ChatPreview() {
   async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = groupDraft.trim();
-    if (!content || !selectedGroup || !userId || busy) return;
-    setBusy(true); setError("");
+    const group = selectedGroup;
+    if (!content || !group || !userId || busy) return;
+    const optimisticId = `optimistic-${crypto.randomUUID()}`;
+    const reply = replyTarget?.kind === "group" ? replyTarget : null;
+    const optimistic: GroupMessage = {
+      id: optimisticId,
+      group_id: group.id,
+      sender_id: userId,
+      content,
+      created_at: new Date().toISOString(),
+      edited_at: null,
+      deleted_for_everyone: false,
+      reply_to_id: reply?.id ?? null,
+      reply_to_content: reply?.content ?? null,
+      reply_to_sender_id: reply?.sender_id ?? null,
+    };
+    setGroupMessages((old) => [...old, optimistic]);
+    setGroupDraft("");
+    setBusy(true);
+    setError("");
     try {
-      const { data, error } = await supabase.from("chat_group_messages").insert({ group_id: selectedGroup.id, sender_id: userId, content, reply_to_id: replyTarget?.kind === "group" ? replyTarget.id : null, reply_to_content: replyTarget?.kind === "group" ? replyTarget.content : null, reply_to_sender_id: replyTarget?.kind === "group" ? replyTarget.sender_id : null }).select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").single();
+      const { data, error } = await supabase.from("chat_group_messages").insert({
+        group_id: group.id,
+        sender_id: userId,
+        content,
+        reply_to_id: reply?.id ?? null,
+        reply_to_content: reply?.content ?? null,
+        reply_to_sender_id: reply?.sender_id ?? null,
+      }).select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if (error) throw error;
-      setGroupMessages((old) => [...old, data as GroupMessage]); setGroupDraft(""); setReplyTarget(null);
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not send group message."); }
-    finally { setBusy(false); }
+      if (!data) throw new Error("Message was not saved. Please try again.");
+      const saved = data as GroupMessage;
+      setGroupMessages((old) => {
+        const withoutOptimistic = old.filter((item) => item.id !== optimisticId);
+        return withoutOptimistic.some((item) => item.id === saved.id)
+          ? withoutOptimistic.map((item) => item.id === saved.id ? saved : item)
+          : [...withoutOptimistic, saved];
+      });
+      setReplyTarget(null);
+    } catch (e) {
+      setGroupMessages((old) => old.filter((item) => item.id !== optimisticId));
+      setGroupDraft(content);
+      setError(e instanceof Error ? e.message : "Could not send group message.");
+    } finally {
+      setBusy(false);
+    }
   }
   useEffect(() => {
     if (!selectedGroup || !userId) return;
