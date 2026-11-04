@@ -314,7 +314,7 @@ export default function ChatPreview() {
   const loadBase = useCallback(async (id: string) => {
     const [profileResult, peopleResult, requestResult] = await Promise.all([
       supabase.from("profiles") .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen").eq("id", id).maybeSingle(),
-      supabase.from("profiles").select("id,username,full_name,avatar_url").neq("id", id).order("full_name").limit(200),
+      supabase.from("profiles").select("id,username,full_name,avatar_url,is_private").neq("id", id).order("full_name").limit(200),
       supabase.from("friend_requests").select("id,sender_id,receiver_id,status,created_at")
         .or(`sender_id.eq.${id},receiver_id.eq.${id}`).order("created_at", { ascending: false }),
     ]);
@@ -428,7 +428,8 @@ export default function ChatPreview() {
     return profiles.filter((p) => {
       const name = displayName(p).toLowerCase();
       const username = (p.username ?? "").toLowerCase();
-      return !q || name.includes(q) || username.includes(q);
+      if (!q) return !p.is_private;
+      return username === q.replace(/^@/, "");
     });
   }, [profiles, search]);
 
@@ -1226,7 +1227,8 @@ export default function ChatPreview() {
     event.preventDefault();
     if (!userId || savingProfile) return;
     const username = profileUsername.trim().replace(/^@/, "").toLowerCase();
-    if (username && !/^[a-z0-9_]{3,20}$/.test(username)) {
+    if (!username) { setError("Choose a unique username before using ConnectX."); return; }
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
       setError("Username must be 3–20 characters and use only letters, numbers or underscores.");
       return;
     }
@@ -1599,6 +1601,7 @@ export default function ChatPreview() {
         <div className="rail-spacer" /><div className="cx-user">{initials(myProfile?.full_name || myProfile?.username || "U")}</div>
       </aside>
 
+      {!myProfile?.username && <div className="username-onboarding-backdrop"><form className="username-onboarding" onSubmit={saveProfile}><div className="username-onboarding-mark">CX</div><p className="username-onboarding-kicker">ONE CONNECTX ID</p><h1>Choose your username</h1><p>Your unique username helps friends find you. You can connect without sharing your email.</p><label className="username-onboarding-label">USERNAME<div className="username-onboarding-input"><span>@</span><input autoFocus value={profileUsername} onChange={(e) => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} minLength={3} maxLength={20} pattern="[a-z0-9_]{3,20}" placeholder="yourname" required /></div></label><small>3–20 characters · letters, numbers and underscore. Must be unique.</small>{error && <p className="username-onboarding-error">{error}</p>}<button className="action-btn" type="submit" disabled={savingProfile || profileUsername.trim().length < 3}>{savingProfile ? "Checking username…" : "Continue to ConnectX"}</button></form></div>}
       <section className={`cx-list ${showMobileChat ? "hide-mobile" : ""}`} onTouchStart={handleMainTabTouchStart} onTouchEnd={handleMainTabTouchEnd}>
         <header className="list-head">
           <div><div className="cx-brand"><span>✦</span> ConnectX</div><p>Your space to connect</p></div>
@@ -1607,7 +1610,7 @@ export default function ChatPreview() {
 
         {tab !== "Settings" && <div className="search-row"><div className="search-box"><span>⌕</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === "Friends" ? "Find people by name or username" : "Search friends"} /></div><button className="refresh-btn" onClick={() => loadBase(userId).catch((e) => setError(e.message))}><span>↻</span> Refresh</button></div>}
+            placeholder={tab === "Friends" ? "Search exact username (e.g. @samarth)" : "Search friends"} /></div><button className="refresh-btn" onClick={() => loadBase(userId).catch((e) => setError(e.message))}><span>↻</span> Refresh</button></div>}
 
         <div className="list-label">{tab.toUpperCase()} <span>{tab === "Friends" ? filteredProfiles.length : tab === "Messages" ? friends.length : ""}</span></div>
 
@@ -2124,6 +2127,11 @@ export default function ChatPreview() {
         @keyframes cx-send-pop{0%{transform:translateY(7px) scale(.96);opacity:.55}70%{transform:translateY(-1px) scale(1.01)}100%{transform:translateY(0) scale(1);opacity:1}}
         @keyframes cx-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
         @media(prefers-reduced-motion:reduce){.message-line,.message-line.message-sending .bubble,.cx-empty-chat,.cx-empty-bubble{animation:none!important}.message-line .bubble,.chat-row{transition:none!important}}
+.username-onboarding-backdrop{position:fixed;z-index:9999;inset:0;display:grid;place-items:center;padding:22px;background:rgba(9,8,18,.88);backdrop-filter:blur(18px)}
+.username-onboarding{width:min(100%,420px);display:flex;flex-direction:column;gap:14px;padding:28px 23px;border:1px solid #5e4b8d;border-radius:25px;background:linear-gradient(155deg,#211b35,#12121e 72%);box-shadow:0 25px 90px #0009;color:#f7f3ff}
+.username-onboarding-mark{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(140deg,#a98dff,#6547cf);font-weight:900}
+.username-onboarding-kicker{margin:4px 0 -10px;color:#b7a5f4;font-size:9px;font-weight:850;letter-spacing:2px}.username-onboarding h1{margin:0;font-size:25px}.username-onboarding>p:not(.username-onboarding-kicker){margin:0;color:#b8b0ca;font-size:12px;line-height:1.55}
+.username-onboarding-label{display:flex;flex-direction:column;gap:8px;color:#c8bce9;font-size:10px;font-weight:800;letter-spacing:1px}.username-onboarding-input{display:flex;align-items:center;gap:9px;padding:0 13px;border:1px solid #574a78;border-radius:13px;background:#171525}.username-onboarding-input span{color:#a78aff;font-size:17px}.username-onboarding-input input{width:100%;height:48px;border:0;outline:0;background:transparent;color:white;font-size:15px}.username-onboarding small{color:#958ba9;font-size:10px}.username-onboarding-error{margin:0;color:#ff9aab;font-size:11px}
         .message-line.message-selected { border-radius:14px;outline:2px solid #7659dc;outline-offset:3px;background:#7659dc18; }
         .message-selection-toolbar { position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#f3efff;border-bottom:1px solid #ded5ff; }
         .message-selection-toolbar strong { flex:1;min-width:120px;color:#38266d;font-size:12px; }
