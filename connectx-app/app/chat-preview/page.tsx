@@ -100,6 +100,7 @@ export default function ChatPreview() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -314,14 +315,12 @@ export default function ChatPreview() {
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const loadBase = useCallback(async (id: string) => {
-    const [profileResult, peopleResult, requestResult] = await Promise.all([
-      supabase.from("profiles") .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen").eq("id", id).maybeSingle(),
-      supabase.from("profiles").select("id,username,full_name,avatar_url,is_private").neq("id", id).order("full_name").limit(200),
+    const [profileResult, requestResult] = await Promise.all([
+      supabase.from("profiles").select("id,username,full_name,avatar_url,bio,is_private,show_last_seen").eq("id", id).maybeSingle(),
       supabase.from("friend_requests").select("id,sender_id,receiver_id,status,created_at")
         .or(`sender_id.eq.${id},receiver_id.eq.${id}`).order("created_at", { ascending: false }),
     ]);
     if (profileResult.error) throw profileResult.error;
-    if (peopleResult.error) throw peopleResult.error;
     if (requestResult.error) throw requestResult.error;
     setMyProfile(profileResult.data);
     if (profileResult.data) {
@@ -331,10 +330,28 @@ export default function ChatPreview() {
       setProfilePrivate(!!profileResult.data.is_private);
       setShowLastSeen(profileResult.data.show_last_seen !== false);
     }
-    setProfiles((peopleResult.data ?? []) as Profile[]);
     setRequests((requestResult.data ?? []) as FriendRequest[]);
   }, []);
 
+  const loadPublicProfiles = useCallback(async () => {
+    if (!userId || profilesLoading) return;
+    setProfilesLoading(true);
+    try {
+      const { data, error: peopleError } = await supabase.from("profiles")
+        .select("id,username,full_name,avatar_url,is_private")
+        .eq("is_private", false).neq("id", userId).order("full_name").limit(100);
+      if (peopleError) throw peopleError;
+      setProfiles((data ?? []) as Profile[]);
+    } finally {
+      setProfilesLoading(false);
+    }
+  }, [userId, profilesLoading]);
+
+  useEffect(() => {
+    if (tab === "Friends" && userId && profiles.length === 0 && !profilesLoading) {
+      void loadPublicProfiles().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load people."));
+    }
+  }, [tab, userId, profiles.length, profilesLoading, loadPublicProfiles]);
   const refreshRequests = useCallback(async () => {
     if (!userId) return;
     const { data, error: requestError } = await supabase.from("friend_requests")
@@ -1753,7 +1770,8 @@ export default function ChatPreview() {
               </div>;
             })}
             {usernameSearchLoading && <p className="empty">Searching username…</p>}
-            {filteredProfiles.length === 0 && !usernameSearchLoading && <p className="empty">{search.trim() ? "No profile found for this exact username." : "No public profiles found."}</p>}
+            {profilesLoading && !search.trim() && <p className="empty">Loading people…</p>}
+            {filteredProfiles.length === 0 && !usernameSearchLoading && !profilesLoading && <p className="empty">{search.trim() ? "No profile found for this exact username." : "No public profiles found."}</p>}
             <div className="section-caption request-caption">INCOMING REQUESTS · {incoming.length}</div>
             {incoming.map((request) => {
               const sender = profiles.find((p) => p.id === request.sender_id);
