@@ -349,8 +349,9 @@ export default function ChatPreview() {
       if (!active) return;
       if (authError) throw authError;
       if (!data.user) {
-        setError("Please sign in to use ConnectX messaging.");
+        setError("Your signup is not complete yet. Please sign in again.");
         setLoading(false);
+        window.location.replace("/");
         return;
       }
       setUserId(data.user.id);
@@ -1601,7 +1602,7 @@ export default function ChatPreview() {
         <div className="rail-spacer" /><div className="cx-user">{initials(myProfile?.full_name || myProfile?.username || "U")}</div>
       </aside>
 
-      {!myProfile?.username && <div className="username-onboarding-backdrop"><form className="username-onboarding" onSubmit={saveProfile}><div className="username-onboarding-mark">CX</div><p className="username-onboarding-kicker">ONE CONNECTX ID</p><h1>Choose your username</h1><p>Your unique username helps friends find you. You can connect without sharing your email.</p><label className="username-onboarding-label">USERNAME<div className="username-onboarding-input"><span>@</span><input autoFocus value={profileUsername} onChange={(e) => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} minLength={3} maxLength={20} pattern="[a-z0-9_]{3,20}" placeholder="yourname" required /></div></label><small>3–20 characters · letters, numbers and underscore. Must be unique.</small>{error && <p className="username-onboarding-error">{error}</p>}<button className="action-btn" type="submit" disabled={savingProfile || profileUsername.trim().length < 3}>{savingProfile ? "Checking username…" : "Continue to ConnectX"}</button></form></div>}
+      {userId && myProfile && !myProfile.username && <div className="username-onboarding-backdrop"><form className="username-onboarding" onSubmit={saveProfile}><div className="username-onboarding-mark">CX</div><p className="username-onboarding-kicker">ONE CONNECTX ID</p><h1>Choose your username</h1><p>Your unique username helps friends find you. You can connect without sharing your email.</p><label className="username-onboarding-label">USERNAME<div className="username-onboarding-input"><span>@</span><input autoFocus value={profileUsername} onChange={(e) => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} minLength={3} maxLength={20} pattern="[a-z0-9_]{3,20}" placeholder="yourname" required /></div></label><small>3–20 characters · letters, numbers and underscore. Must be unique.</small>{error && <p className="username-onboarding-error">{error}</p>}<button className="action-btn" type="submit" disabled={savingProfile || profileUsername.trim().length < 3}>{savingProfile ? "Checking username…" : "Continue to ConnectX"}</button></form></div>}
       <section className={`cx-list ${showMobileChat ? "hide-mobile" : ""}`} onTouchStart={handleMainTabTouchStart} onTouchEnd={handleMainTabTouchEnd}>
         <header className="list-head">
           <div><div className="cx-brand"><span>✦</span> ConnectX</div><p>Your space to connect</p></div>
