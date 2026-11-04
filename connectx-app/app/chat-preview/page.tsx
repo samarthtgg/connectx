@@ -546,9 +546,35 @@ export default function ChatPreview() {
     const ids=rows.map(p=>p.id);
     const optionsResult=await supabase.from("group_poll_options").select("id,poll_id,label").in("poll_id",ids);
     if(optionsResult.error) throw optionsResult.error;
-    const votesResult=await supabase.from("group_poll_votes").select("poll_id,option_id,user_id").in("poll_id",ids);
-    if(votesResult.error) throw votesResult.error;
-    setGroupPolls(rows.map(p=>({...p,options:(optionsResult.data??[]).filter(o=>o.poll_id===p.id).map(o=>({id:o.id,label:o.label,votes:(votesResult.data??[]).filter(v=>v.option_id===o.id).length,voted:(votesResult.data??[]).some(v=>v.option_id===o.id&&v.user_id===userId)}))})));
+    const [votesResult, ownVotesResult] = await Promise.all([
+      supabase.from("group_poll_votes").select("poll_id,option_id").in("poll_id", ids),
+      supabase.from("group_poll_votes").select("poll_id,option_id").in("poll_id", ids).eq("user_id", userId),
+    ]);
+    if (votesResult.error) throw votesResult.error;
+    if (ownVotesResult.error) throw ownVotesResult.error;
+
+    // Group totals need only poll/option IDs. Fetch voter identity only for
+    // the signed-in user so the normal client never downloads other voters' IDs.
+    const voteCounts = new Map<string, number>();
+    for (const vote of votesResult.data ?? []) {
+      voteCounts.set(vote.option_id, (voteCounts.get(vote.option_id) ?? 0) + 1);
+    }
+    const ownVoteKeys = new Set((ownVotesResult.data ?? []).map(vote => `${vote.poll_id}:${vote.option_id}`));
+    const optionsByPoll = new Map<string, NonNullable<typeof optionsResult.data>>();
+    for (const option of optionsResult.data ?? []) {
+      const pollOptions = optionsByPoll.get(option.poll_id) ?? [];
+      pollOptions.push(option);
+      optionsByPoll.set(option.poll_id, pollOptions);
+    }
+    setGroupPolls(rows.map(p => ({
+      ...p,
+      options: (optionsByPoll.get(p.id) ?? []).map(option => ({
+        id: option.id,
+        label: option.label,
+        votes: voteCounts.get(option.id) ?? 0,
+        voted: ownVoteKeys.has(`${p.id}:${option.id}`),
+      })),
+    })));
   }
   async function openGroupProfile(){if(!selectedGroup)return;setGroupProfileOpen(true);try{await loadGroupProfile(selectedGroup);}catch(e){setError(e instanceof Error?e.message:"Could not load group info.");}}
   async function saveGroupDetails(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!selectedGroup||!groupEditName.trim())return;const {data,error}=await supabase.from("chat_groups").update({name:groupEditName.trim(),description:groupEditDescription.trim()||null,updated_at:new Date().toISOString()}).eq("id",selectedGroup.id).select("id,name,description,created_by,created_at").single();if(error){setError(error.message);return;}setSelectedGroup(data as ChatGroup);await loadGroups();setNotice("Group info updated.");}
