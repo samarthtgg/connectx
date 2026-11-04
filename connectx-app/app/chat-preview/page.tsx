@@ -110,6 +110,20 @@ export default function ChatPreview() {
   const [messageSelectionMode, setMessageSelectionMode] = useState(false);
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [showArchivedChats, setShowArchivedChats] = useState(false);
+  const [chatLockIds, setChatLockIds] = useState<string[]>([]);
+  const [chatLockCredential, setChatLockCredential] = useState<string | null>(null);
+  const [chatLockUnlocked, setChatLockUnlocked] = useState(false);
+  const [chatLockSupported, setChatLockSupported] = useState(false);
+  const [chatLockBusy, setChatLockBusy] = useState(false);
+  const [showLockedChats, setShowLockedChats] = useState(false);
+  useEffect(() => {
+    try {
+      setChatLockIds(JSON.parse(localStorage.getItem("connectx-chat-locks-" + userId) || "[]"));
+      setChatLockCredential(localStorage.getItem("connectx-chat-lock-credential-" + userId));
+      setChatLockSupported(typeof window !== "undefined" && !!window.PublicKeyCredential && !!navigator.credentials);
+    } catch { setChatLockIds([]); setChatLockCredential(null); }
+  }, [userId]);
+
   const [reactionMessage, setReactionMessage] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
@@ -806,6 +820,58 @@ export default function ChatPreview() {
     }, { onConflict: "user_id,friend_id" });
     if (prefError) throw prefError;
     await loadChatPreferences();
+  }
+
+  function persistChatLocks(next: string[]) {
+    setChatLockIds(next);
+    try { localStorage.setItem("connectx-chat-locks-" + userId, JSON.stringify(next)); } catch {}
+  }
+  function randomChallenge() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return bytes;
+  }
+  async function enrollChatLock() {
+    if (!chatLockSupported || !userId) { setError("This browser or device does not support biometric/passkey authentication."); return; }
+    setChatLockBusy(true);
+    try {
+      const credential = await navigator.credentials.create({ publicKey: {
+        challenge: randomChallenge(), rp: { name: "ConnectX" },
+        user: { id: new TextEncoder().encode(userId), name: userId, displayName: myProfile?.full_name || "ConnectX user" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "preferred" },
+        timeout: 60000, attestation: "none"
+      } }) as PublicKeyCredential | null;
+      if (!credential) throw new Error("Biometric setup was cancelled.");
+      const id = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)));
+      localStorage.setItem("connectx-chat-lock-credential-" + userId, id);
+      setChatLockCredential(id);
+      setNotice("Chat Lock biometric verification is enabled on this device.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not enable biometric verification."); }
+    finally { setChatLockBusy(false); }
+  }
+  async function verifyChatLock() {
+    if (!chatLockCredential) { setError("Enable Chat Lock verification in Settings first."); return false; }
+    setChatLockBusy(true);
+    try {
+      const idBytes = Uint8Array.from(atob(chatLockCredential), c => c.charCodeAt(0));
+      const credential = await navigator.credentials.get({ publicKey: {
+        challenge: randomChallenge(), allowCredentials: [{ type: "public-key", id: idBytes }],
+        userVerification: "required", timeout: 60000
+      } });
+      if (!credential) throw new Error("Biometric verification was cancelled.");
+      setChatLockUnlocked(true);
+      setShowLockedChats(true);
+      setNotice("Chat Lock unlocked.");
+      return true;
+    } catch (e) { setError(e instanceof Error ? e.message : "Biometric verification failed."); return false; }
+    finally { setChatLockBusy(false); }
+  }
+  function toggleChatLock(id: string) {
+    if (!chatLockCredential) { setError("First enable fingerprint/biometric verification in Settings."); setTab("Settings"); return; }
+    const next = chatLockIds.includes(id) ? chatLockIds.filter(x => x !== id) : [...chatLockIds, id];
+    persistChatLocks(next);
+    setNotice(next.includes(id) ? "Chat moved to Chat Lock." : "Chat removed from Chat Lock.");
   }
 
   function toggleMessageSelection(messageId: string) {
@@ -1558,6 +1624,10 @@ export default function ChatPreview() {
             <small className="profile-hint">{profileBio.length}/160 characters</small>
             <div className="privacy-heading">APPEARANCE</div>
             <label className="privacy-option"><span><strong>Dark mode</strong><small>Use a darker theme across ConnectX</small></span><input type="checkbox" checked={darkMode} onChange={(e) => setDarkMode(e.target.checked)} /></label>
+            <div className="privacy-heading">CHAT LOCK</div>
+            <div className="privacy-option"><span><strong>Fingerprint / biometric verification</strong><small>Required before opening your locked chats. Uses your device's passkey prompt.</small></span><button type="button" className="mini-btn" disabled={chatLockBusy || !chatLockSupported} onClick={() => void enrollChatLock()}>{chatLockCredential ? "Set up again" : "Enable"}</button></div>
+            {!chatLockSupported && <small className="profile-hint">Biometric/passkey authentication is not available in this browser. Try a supported browser on a device with screen lock enabled.</small>}
+            {chatLockCredential && <small className="profile-hint">Verification is configured on this device. Locked chats: {chatLockIds.length}.</small>}
             <div className="privacy-heading">PRIVACY</div>
             <label className="privacy-option"><span><strong>Private profile</strong><small>Privacy preference for future profile discovery controls</small></span><input type="checkbox" checked={profilePrivate} onChange={(e) => setProfilePrivate(e.target.checked)} /></label>
             <label className="privacy-option"><span><strong>Show last seen</strong><small>Allow friends to see your last active time when presence is added</small></span><input type="checkbox" checked={showLastSeen} onChange={(e) => setShowLastSeen(e.target.checked)} /></label>
@@ -1632,7 +1702,7 @@ export default function ChatPreview() {
         ) : tab === "Friends" ? (
           <div className="cx-chats">
             <div className="groups-heading"><strong>GROUPS</strong><button type="button" className="mini-btn" onClick={() => setShowCreateGroup(true)}>＋ Create group</button></div>
-            {groups.map((group) => <button type="button" className="group-row" key={group.id} onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span></button>)}
+            {groups.map((group) => <button type="button" className="group-row" key={group.id} onContextMenu={(e) => { e.preventDefault(); toggleChatLock("group:" + group.id); }} onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span></button>)}
             {groups.length === 0 && <p className="group-empty">No groups yet. Create one and invite your friends.</p>}
             {showCreateGroup && <div className="status-modal-backdrop" onClick={() => setShowCreateGroup(false)}><form className="status-compose" onSubmit={createGroup} onClick={(e) => e.stopPropagation()}><div className="status-compose-head"><strong>Create a group</strong><button type="button" onClick={() => setShowCreateGroup(false)}>×</button></div><label className="profile-field">Group name<input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} maxLength={60} required placeholder="e.g. Project team" /></label><label className="profile-field">Description<input value={newGroupDescription} onChange={(e) => setNewGroupDescription(e.target.value)} maxLength={300} placeholder="Optional description" /></label><div className="section-caption">ADD FRIENDS</div>{friends.map((friend) => <label className="privacy-option" key={friend.id}><span><strong>{displayName(friend)}</strong></span><input type="checkbox" checked={selectedGroupMembers.includes(friend.id)} onChange={(e) => setSelectedGroupMembers((old) => e.target.checked ? [...old, friend.id] : old.filter((id) => id !== friend.id))} /></label>)}<button className="action-btn" disabled={busy || !newGroupName.trim()}>{busy ? "Creating…" : "Create group"}</button></form></div>}
             <div className="section-caption">PEOPLE</div>
@@ -1662,6 +1732,16 @@ export default function ChatPreview() {
           </div>
         ) : (
           <div className="cx-chats">
+            <div className="section-caption">🔒 CHAT LOCK <button type="button" className="text-btn" disabled={!chatLockCredential || chatLockBusy} onClick={() => { if (chatLockUnlocked) { setChatLockUnlocked(false); setShowLockedChats(false); } else void verifyChatLock(); }}>{chatLockUnlocked ? "Lock" : "Unlock"}</button></div>
+            {showLockedChats && chatLockUnlocked && chatLockIds.map((id) => {
+              if (id.startsWith("friend:")) {
+                const friend = profiles.find(p => p.id === id.slice(7));
+                return friend ? <button type="button" className="chat-row" key={id} onClick={() => chooseFriend(friend)}><span className="avatar">{initials(displayName(friend))}</span><span className="chat-info"><strong>{displayName(friend)}</strong><small>Locked private chat</small></span></button> : null;
+              }
+              const group = groups.find(g => g.id === id.slice(6));
+              return group ? <button type="button" className="group-row" key={id} onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>Locked group</small></span></button> : null;
+            })}
+            {showLockedChats && chatLockUnlocked && chatLockIds.length === 0 && <p className="empty">No locked chats yet.</p>}
             {groups.length > 0 && <>
               <div className="groups-heading"><strong>GROUPS</strong><span>{groups.length}</span></div>
               {groups.map((group) => (
@@ -1683,7 +1763,7 @@ export default function ChatPreview() {
                 <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{friend.username ? `@${friend.username}` : "Tap to open chat"}{preference?.unread_at ? " · Unread" : ""}</small></span>
               </button>
               <div className="chat-row-tools">
-                <button type="button" className="text-btn" onClick={() => void togglePinnedChat(friend.id)}>{preference?.is_pinned ? "Unpin" : "Pin"}</button>
+                <button type="button" className="text-btn" onClick={() => toggleChatLock("friend:" + friend.id)}>{chatLockIds.includes("friend:" + friend.id) ? "Unlock" : "Lock"}</button>\n                <button type="button" className="text-btn" onClick={() => void togglePinnedChat(friend.id)}>{preference?.is_pinned ? "Unpin" : "Pin"}</button>
                 <button type="button" className="text-btn" onClick={() => void toggleUnreadChat(friend.id)}>{preference?.unread_at ? "Mark read" : "Unread"}</button>
                 <button type="button" className="text-btn" onClick={() => void toggleArchivedChat(friend.id)}>{preference?.is_archived ? "Restore" : "Archive"}</button>
               </div>
