@@ -1613,7 +1613,6 @@ export default function ChatPreview() {
 
         {loading ? <p className="empty">Loading your account…</p> : tab === "Settings" ? (
           <form className="settings-panel profile-editor" onSubmit={saveProfile}>
-            <div className="settings-hero"><div className="settings-hero-icon">⚙</div><div><span className="settings-eyebrow">PERSONAL SPACE</span><h2>Settings</h2><p>Make ConnectX feel like yours.</p></div><span className="settings-hero-spark">✦</span></div>
             <div className="settings-section-title"><span>01</span> YOUR PROFILE</div>
             <div className="profile-photo-wrap">
               {myProfile?.avatar_url && !avatarFile ? <img className="profile-photo" src={myProfile.avatar_url} alt="Your profile" /> : <div className="large-avatar">{initials(profileName || profileUsername || "U")}</div>}
@@ -2361,3 +2360,20 @@ export default function ChatPreview() {
     </main>
   );
 }
+
+<style>
+/* Clean, compact settings layout: remove decorative hero and reduce vertical waste */
+.settings-panel.profile-editor{padding:10px 14px calc(18px + env(safe-area-inset-bottom));gap:8px;border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
+.settings-panel.profile-editor:before{display:none}
+.settings-section-title{margin:8px 0 0;font-size:9px;gap:8px}
+.settings-section-title span{width:20px;height:20px;border-radius:6px}
+.settings-panel .profile-photo-wrap{margin:2px 0 4px}
+.settings-panel .profile-photo,.settings-panel .large-avatar{width:62px;height:62px;font-size:20px}
+.settings-panel .profile-field{gap:5px;font-size:11px}
+.settings-panel .profile-field input,.settings-panel .profile-field textarea{padding:10px 12px;border-radius:11px}
+.settings-panel .profile-field textarea{min-height:62px}
+.settings-panel .privacy-option{min-height:50px;padding:9px 11px;border-radius:12px}
+.settings-panel .privacy-option small{font-size:9px}
+.settings-panel .action-btn{min-height:42px}
+
+</style>
