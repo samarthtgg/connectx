@@ -72,12 +72,12 @@ export default function Home() {
         if (error) {
           const lower = error.message.toLowerCase();
           if (lower.includes("already") || lower.includes("registered") || lower.includes("exists")) {
-            showMessage("An account with this email may already exist. Try signing in or use Forgot password.", "error");
+            showMessage("We couldn’t complete signup with these details. If you already use ConnectX, sign in or use Forgot password. Otherwise, try again later.", "info");
           } else {
             throw error;
           }
         } else if (data.user && data.user.identities?.length === 0) {
-          showMessage("An account with this email already exists. Sign in or use Forgot password.", "error");
+          showMessage("We couldn’t complete signup with these details. If you already use ConnectX, sign in or use Forgot password. Otherwise, try again later.", "info");
         } else if (data.session) {
           setUser(data.user);
           showMessage("Your ConnectX account has been created successfully. Welcome!", "success");
