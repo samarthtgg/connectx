@@ -82,8 +82,8 @@ export default function Home() {
           setUser(data.user);
           showMessage("Your ConnectX account has been created successfully. Welcome!", "success");
         } else {
-          setVerificationPending(false);
-          showMessage("Supabase is still requiring email confirmation. Turn OFF Confirm email in Supabase Authentication → Providers → Email, then try again. No account session was created.", "error");
+          setVerificationPending(true);
+          showMessage("Email confirmation is required before you can sign in. Check your inbox and spam folder. If the email does not arrive, use the resend button below. Keep email confirmation enabled to protect your account.", "info");
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
