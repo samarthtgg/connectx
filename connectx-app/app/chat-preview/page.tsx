@@ -606,9 +606,18 @@ export default function ChatPreview() {
        });
        if(error)throw error;
        if(!data)throw new Error("The poll was not saved. Please try again.");
-       await loadGroupFeed(selectedGroup);
+
+       // The poll is committed at this point. A follow-up feed refresh can fail
+       // independently, so never tell the user that creation failed or leave
+       // the composer ready to submit a duplicate poll.
        setPollQuestion("");setPollOptionsDraft(["",""]);setPollAllowMultipleAnswers(false);setPollHideVoterNames(false);
-       setGroupToolTab(null);setShowGroupTools(false);setNotice("Poll posted.");
+       setGroupToolTab(null);setShowGroupTools(false);
+       try {
+         await loadGroupFeed(selectedGroup);
+         setNotice("Poll posted.");
+       } catch {
+         setNotice("Poll posted, but the group feed could not refresh. Reopen the group to see it.");
+       }
      }catch(e){setError(e instanceof Error?e.message:"Poll could not be posted.");}
      finally{groupPostLock.current=false;setGroupPostBusy(false);}
    }
