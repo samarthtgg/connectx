@@ -101,6 +101,7 @@ export default function ChatPreview() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -334,7 +335,7 @@ export default function ChatPreview() {
   }, []);
 
   const loadPublicProfiles = useCallback(async () => {
-    if (!userId || profilesLoading) return;
+    if (!userId || profilesLoading || profilesLoaded) return;
     setProfilesLoading(true);
     try {
       const { data, error: peopleError } = await supabase.from("profiles")
@@ -344,14 +345,15 @@ export default function ChatPreview() {
       setProfiles((data ?? []) as Profile[]);
     } finally {
       setProfilesLoading(false);
+      setProfilesLoaded(true);
     }
-  }, [userId, profilesLoading]);
+  }, [userId, profilesLoading, profilesLoaded]);
 
   useEffect(() => {
-    if (tab === "Friends" && userId && profiles.length === 0 && !profilesLoading) {
+    if (tab === "Friends" && userId && !profilesLoaded && !profilesLoading) {
       void loadPublicProfiles().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load people."));
     }
-  }, [tab, userId, profiles.length, profilesLoading, loadPublicProfiles]);
+  }, [tab, userId, profilesLoaded, profilesLoading, loadPublicProfiles]);
   const refreshRequests = useCallback(async () => {
     if (!userId) return;
     const { data, error: requestError } = await supabase.from("friend_requests")
