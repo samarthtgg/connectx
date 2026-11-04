@@ -46,6 +46,7 @@ type DirectMessage = {
   content: string;
   created_at: string;
   read_at?: string | null;
+  edited_at?: string | null;
   message_type?: "text" | "voice" | "image" | "video";
   media_path?: string | null;
   media_expires_at?: string | null;
@@ -109,6 +110,9 @@ export default function ChatPreview() {
   const [selectedChats, setSelectedChats] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editMessageDraft, setEditMessageDraft] = useState("");
+  const [editMessageBusy, setEditMessageBusy] = useState(false);
   const [messageSelectionMode, setMessageSelectionMode] = useState(false);
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [showArchivedChats, setShowArchivedChats] = useState(false);
@@ -637,7 +641,7 @@ export default function ChatPreview() {
    async function manageGroupMember(memberId:string,action:"admin"|"member"|"remove"){if(!selectedGroup)return;const query=action==="remove"?supabase.from("chat_group_members").delete().eq("group_id",selectedGroup.id).eq("user_id",memberId):supabase.from("chat_group_members").update({role:action}).eq("group_id",selectedGroup.id).eq("user_id",memberId);const {error}=await query;if(error){setError(error.message);return;}await loadGroupProfile(selectedGroup);await loadGroups();}
   async function openGroup(group: ChatGroup) {
     setSelectedGroup(group); setSelectedFriend(null); setShowMobileChat(true); setTab("Messages"); setError("");
-    const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").eq("group_id", group.id).order("created_at", { ascending: false }).limit(100);
+    const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id,edited_at").eq("group_id", group.id).order("created_at", { ascending: false }).limit(100);
     if (error) { setError(error.message); return; }
     setGroupMessages(((data ?? []) as GroupMessage[]).reverse());
     try { await loadGroupProfile(group); } catch (e) { setError(e instanceof Error ? e.message : "Could not load group extras."); }
@@ -931,6 +935,25 @@ export default function ChatPreview() {
     setNotice(next.includes(id) ? "Chat moved to Chat Lock." : "Chat removed from Chat Lock.");
   }
 
+  async function saveEditedMessage(message: DirectMessage) {
+    const content = editMessageDraft.trim();
+    if (!content || content.length > 5000 || message.sender_id !== userId || editMessageBusy) return;
+    setEditMessageBusy(true);
+    try {
+      const editedAt = new Date().toISOString();
+      const { data, error: updateError } = await supabase.from("messages").update({ content, edited_at: editedAt })
+        .eq("id", message.id).eq("sender_id", userId).select("id,content,edited_at").maybeSingle();
+      if (updateError) throw updateError;
+      if (!data) throw new Error("Message could not be edited. Refresh and try again.");
+      setMessages((old) => old.map((item) => item.id === message.id ? { ...item, content: data.content, edited_at: data.edited_at } : item));
+      setEditingMessageId(null); setEditMessageDraft(""); setNotice("Message edited.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not edit message."); }
+    finally { setEditMessageBusy(false); }
+  }
+  async function copyMessage(message: DirectMessage) {
+    try { await navigator.clipboard.writeText(message.content); setNotice("Message copied."); }
+    catch { setError("Could not copy message. Check clipboard permission."); }
+  }
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((old) => old.includes(messageId) ? old.filter((id) => id !== messageId) : [...old, messageId]);
   }
@@ -1903,10 +1926,12 @@ export default function ChatPreview() {
               const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
               return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "") + (message.id.startsWith("optimistic-") ? " message-sending" : "")} onClick={() => { if (messageSelectionMode) toggleMessageSelection(message.id); }} onTouchStart={(e) => { if (!messageSelectionMode) startReplySwipe(e, message, "direct"); }} onTouchEnd={(e) => { if (!messageSelectionMode) finishReplySwipe(e, message, "direct"); }}>
                 <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_content.startsWith("STATUS_REPLY|") ? "Replied to your status" : message.reply_to_content.startsWith("STATUS_REACTION|") ? "Reacted to your status" : message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content.replace(/^STATUS_(?:REPLY|REACTION)\|/, "")}</span></div>}{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : <p>{message.content}</p>}
-                  <small>{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
+                  {editingMessageId === message.id && mine && message.message_type === "text" && <div className="message-edit-inline"><textarea rows={3} maxLength={5000} value={editMessageDraft} onChange={(event) => setEditMessageDraft(event.target.value)} aria-label="Edit message" /><div><button type="button" disabled={!editMessageDraft.trim() || editMessageBusy} onClick={() => void saveEditedMessage(message)}>{editMessageBusy ? "Saving…" : "Save"}</button><button type="button" onClick={() => { setEditingMessageId(null); setEditMessageDraft(""); }}>Cancel</button></div></div>}
+                  <small>{message.edited_at ? "Edited · " : ""}{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
                   {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
                   <button className="react-trigger" onClick={() => setReactionMessage(reactionMessage === message.id ? null : message.id)} aria-label="React to message">☺</button>
+                  <div className="message-quick-actions" style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}><button type="button" style={{fontSize:12}} onClick={() => void copyMessage(message)}>Copy</button>{mine && message.message_type === "text" && !message.id.startsWith("optimistic-") && <button type="button" style={{fontSize:12}} onClick={() => { setEditingMessageId(message.id); setEditMessageDraft(message.content); }}>Edit</button>}<button type="button" style={{fontSize:12}} onClick={() => setReplyTarget({kind:"direct",id:message.id,content:message.content,sender_id:message.sender_id})}>Reply</button></div>
                 </div>
               </div>;
             })}
