@@ -745,13 +745,25 @@ export default function ChatPreview() {
     if (messageError) throw messageError;
     const pref = chatPreferences.find((item) => item.friend_id === friendId);
     const visible = (data ?? []).filter((item) => !pref?.cleared_at || new Date(item.created_at) > new Date(pref.cleared_at));
-    const messagesWithUrls = await Promise.all(visible.map(async (item) => {
-      if (!item.media_path || item.media_expired || !item.media_expires_at || new Date(item.media_expires_at).getTime() <= Date.now()) {
-        return { ...item, media_url: null };
+    const now = Date.now();
+    const mediaItems = visible.filter((item) => item.media_path && !item.media_expired && item.media_expires_at && new Date(item.media_expires_at).getTime() > now);
+    const uniquePaths = Array.from(new Set(mediaItems.map((item) => item.media_path as string)));
+    const shortestExpiry = mediaItems.length
+      ? Math.max(1, Math.floor(Math.min(...mediaItems.map((item) => new Date(item.media_expires_at as string).getTime() - now)) / 1000))
+      : 60;
+    const signedUrlByPath = new Map<string, string>();
+    if (uniquePaths.length) {
+      const { data: signedRows, error: signedError } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrls(uniquePaths, shortestExpiry);
+      if (signedError) throw signedError;
+      for (const signed of signedRows ?? []) {
+        if (signed.path && signed.signedUrl) signedUrlByPath.set(signed.path, signed.signedUrl);
       }
-      const remainingSeconds = Math.max(1, Math.floor((new Date(item.media_expires_at).getTime() - Date.now()) / 1000));
-      const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrl(item.media_path, remainingSeconds);
-      return { ...item, media_url: signed?.signedUrl ?? null };
+    }
+    const messagesWithUrls = visible.map((item) => ({
+      ...item,
+      media_url: item.media_path && !item.media_expired && item.media_expires_at && new Date(item.media_expires_at).getTime() > now
+        ? signedUrlByPath.get(item.media_path) ?? null
+        : null,
     }));
     setMessages((messagesWithUrls as DirectMessage[]).reverse());
     const ids = visible.map((item) => item.id);
