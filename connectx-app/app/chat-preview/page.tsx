@@ -287,6 +287,7 @@ export default function ChatPreview() {
   const voiceGestureRef=useRef<{x:number;y:number}|null>(null);
   const voiceLockedRef=useRef(false);
   const voiceCancelRef=useRef(false);
+  const voiceAutoSendRef=useRef(false);
   const stopAfterStartRef=useRef(false);
   const [voiceBlob,setVoiceBlob]=useState<Blob|null>(null);
   const [voicePreview,setVoicePreview]=useState("");
@@ -1375,7 +1376,10 @@ export default function ChatPreview() {
         if(recorderRef.current===recorder)recorderRef.current=null;
         if(voiceCancelRef.current){chunksRef.current=[];voiceCancelRef.current=false;setVoiceBlob(null);setVoicePreview("");return;}
         const blob=new Blob(chunksRef.current,{type:recorder.mimeType||"audio/webm"});
-        if(blob.size){setVoiceBlob(blob);setVoicePreview(URL.createObjectURL(blob));}
+        if(blob.size){
+          setVoiceBlob(blob);setVoicePreview(URL.createObjectURL(blob));
+          if(voiceAutoSendRef.current){voiceAutoSendRef.current=false;void sendVoiceMessage(blob);}
+        }
       };
       recorderRef.current=recorder;recorder.start();setRecording(true);setRecordingSeconds(0);
       if(stopAfterStartRef.current&&!voiceLockedRef.current){stopAfterStartRef.current=false;recorder.stop();setRecording(false);}
@@ -1386,7 +1390,7 @@ export default function ChatPreview() {
     else if(!recorderRef.current||recorderRef.current.state==="inactive"){stopAfterStartRef.current=true;}
   }
   function cancelVoiceRecording(){
-    voiceCancelRef.current=true;voiceLockedRef.current=false;setRecordingLocked(false);setRecording(false);
+    voiceCancelRef.current=true;voiceAutoSendRef.current=false;voiceLockedRef.current=false;setRecordingLocked(false);setRecording(false);
     if(recorderRef.current?.state==="recording")recorderRef.current.stop();
     else if(!recorderRef.current||recorderRef.current.state==="inactive")stopAfterStartRef.current=true;
   }
@@ -1405,25 +1409,25 @@ export default function ChatPreview() {
   function handleVoicePointerUp(){
     if(!voiceGestureRef.current)return;
     voiceGestureRef.current=null;
-    if(!voiceLockedRef.current)stopVoiceRecording();
+    if(!voiceLockedRef.current){voiceAutoSendRef.current=true;stopVoiceRecording();}
   }
   function handleVoicePointerCancel(){if(voiceGestureRef.current){voiceGestureRef.current=null;cancelVoiceRecording();}}
-  async function sendVoiceMessage(){
-    if(!voiceBlob||!userId||!selectedFriend||busy)return;
+  async function sendVoiceMessage(blobToSend:Blob|null=voiceBlob){
+    if(!blobToSend||!userId||!selectedFriend||busy)return;
     if(selectedFriend.is_private && selectedFriend.id !== userId && !acceptedIds.has(selectedFriend.id)){
       setError("This private profile only accepts messages from friends.");
       return;
     }
     setBusy(true);setError("");
     try{
-      const ext=voiceBlob.type.includes("mp4")?"m4a":"webm";
+      const ext=blobToSend.type.includes("mp4")?"m4a":"webm";
       const key=userId+"/"+crypto.randomUUID()+"."+ext;
-      const {error:uploadError}=await supabase.storage.from("connectx-voice-notes").upload(key,voiceBlob,{contentType:voiceBlob.type});
+      const {error:uploadError}=await supabase.storage.from("connectx-voice-notes").upload(key,voiceBlob,{contentType:blobToSend.type});
       if(uploadError)throw uploadError;
       const url=supabase.storage.from("connectx-voice-notes").getPublicUrl(key).data.publicUrl;
       const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice",reply_to_id:replyTarget?.kind === "direct" ? replyTarget.id : null,reply_to_content:replyTarget?.kind === "direct" ? replyTarget.content : null,reply_to_sender_id:replyTarget?.kind === "direct" ? replyTarget.sender_id : null}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if(insertError)throw insertError;
-      setMessages(old=>[...old,data as DirectMessage]);setReplyTarget(null);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");
+      setMessages(old=>[...old,data as DirectMessage]);setReplyTarget(null);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");voiceAutoSendRef.current=false;
     }catch(e){setError(e instanceof Error?e.message:"Could not send voice message.");}
     finally{setBusy(false);}
   }
