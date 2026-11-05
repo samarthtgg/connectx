@@ -2930,6 +2930,25 @@ export default function ChatPreview() {
         .message-edit-inline button{min-height:36px;padding:7px 14px;border:1px solid #8b7be2;border-radius:9px;background:#7868eb;color:#fff;font-size:12px;font-weight:700}
         .message-edit-inline button:last-child{border-color:#a6a1b8;background:transparent;color:inherit}
         .message-edit-inline button:disabled{opacity:.45;cursor:not-allowed}
+        /* Refined mobile home header and search controls */
+        @media(max-width:700px){
+          .cx-list:not(.hide-mobile) .list-head{min-height:94px;padding:16px 18px 13px;gap:12px;background:#171722}
+          .cx-list .cx-brand{font-size:25px;line-height:1.08;font-weight:750;letter-spacing:-.9px;color:#f1eeff}
+          .cx-list .cx-brand span{font-size:27px;margin-right:5px;color:#8062ed}
+          .cx-list .list-head p{margin-top:6px;font-size:13px;line-height:1.25;color:#aaa4bd}
+          .cx-list .list-head-actions{gap:10px;flex-shrink:0}
+          .cx-list .intelligence-launcher{height:46px;gap:7px;padding:4px 10px 4px 4px;border-radius:25px}
+          .cx-list .intelligence-orb{width:36px;height:36px;font-size:22px}
+          .cx-list .intelligence-launcher-label{font-size:12px}
+          .cx-list .header-profile{width:50px;height:50px;flex:0 0 50px;border:0;border-radius:50%;background:#8068e8;color:#fff;font-size:20px;box-shadow:0 0 0 6px #eeeaff}
+          .cx-list .search-row{padding:0 18px;gap:10px;margin-top:0}
+          .cx-list .search-row .search-box{height:50px;min-width:0;flex:1;margin:0;padding:0 15px;gap:10px;align-items:center;border-radius:27px;background:#20202b;color:#e8e3ff}
+          .cx-list .search-box>span{font-size:21px;line-height:1;color:#e3ddff}
+          .cx-list .search-box input{min-width:0;color:#f4f0ff;font-size:14px}
+          .cx-list .search-box input::placeholder{color:#918ba8;opacity:1}
+          .cx-list .refresh-btn{height:50px;min-width:112px;margin:0;padding:0 17px;border-radius:27px;background:linear-gradient(135deg,#8068e8,#7654d7);font-size:13px;font-weight:700}
+          .cx-list .refresh-btn span{font-size:20px;margin-right:7px}
+        }
       `}</style>
     </main>
   );
