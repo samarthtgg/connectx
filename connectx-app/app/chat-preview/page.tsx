@@ -1372,6 +1372,7 @@ export default function ChatPreview() {
       recorder.ondataavailable=e=>{if(e.data.size)chunksRef.current.push(e.data);};
       recorder.onstop=()=>{
         stream.getTracks().forEach(t=>t.stop());
+        if(recorderRef.current===recorder)recorderRef.current=null;
         if(voiceCancelRef.current){chunksRef.current=[];voiceCancelRef.current=false;setVoiceBlob(null);setVoicePreview("");return;}
         const blob=new Blob(chunksRef.current,{type:recorder.mimeType||"audio/webm"});
         if(blob.size){setVoiceBlob(blob);setVoicePreview(URL.createObjectURL(blob));}
@@ -1382,12 +1383,12 @@ export default function ChatPreview() {
   }
   function stopVoiceRecording(){
     if(recorderRef.current?.state==="recording"){recorderRef.current.stop();setRecording(false);}
-    else if(!recorderRef.current){stopAfterStartRef.current=true;}
+    else if(!recorderRef.current||recorderRef.current.state==="inactive"){stopAfterStartRef.current=true;}
   }
   function cancelVoiceRecording(){
     voiceCancelRef.current=true;voiceLockedRef.current=false;setRecordingLocked(false);setRecording(false);
     if(recorderRef.current?.state==="recording")recorderRef.current.stop();
-    else if(!recorderRef.current)stopAfterStartRef.current=true;
+    else if(!recorderRef.current||recorderRef.current.state==="inactive")stopAfterStartRef.current=true;
   }
   function handleVoicePointerDown(event:ReactPointerEvent<HTMLButtonElement>){
     if(busy||voiceBlob||attachment||recording)return;
