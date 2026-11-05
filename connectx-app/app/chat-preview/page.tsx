@@ -2206,10 +2206,6 @@ export default function ChatPreview() {
           </div>
         ) : tab === "Friends" ? (
           <div className="cx-chats">
-            <div className="groups-heading"><strong>GROUPS</strong><button type="button" className="mini-btn" onClick={() => setShowCreateGroup(true)}>＋ Create group</button></div>
-            {groups.map((group) => <button type="button" className="group-row" key={group.id} onContextMenu={(e) => { e.preventDefault(); toggleChatLock("group:" + group.id); }} onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span></button>)}
-            {groups.length === 0 && <p className="group-empty">No groups yet. Create one and invite your friends.</p>}
-            
             {search.trim() && <div className="section-caption">SEARCH RESULT</div>}
             {filteredProfiles.map((profile) => {
               const relation = requests.find((r) =>
