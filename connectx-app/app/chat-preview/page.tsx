@@ -926,12 +926,30 @@ export default function ChatPreview() {
     if (remoteAudioRef.current && remoteStream) remoteAudioRef.current.srcObject = remoteStream;
   }, [localStream, remoteStream, callMode]);
 
+  function callErrorMessage(reason: unknown, mode: "audio" | "video") {
+    const error = reason as { name?: string; message?: string; details?: string; hint?: string; code?: string };
+    const name = error?.name ?? "";
+    const detail = [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(" · ");
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") return "Microphone/camera permission was denied. Allow ConnectX to use the required device in your browser or Android site settings, then retry.";
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") return mode === "video" ? "No camera or microphone was found. Connect a working device and retry." : "No microphone was found. Connect a working microphone and retry.";
+    if (name === "NotReadableError" || name === "TrackStartError") return "The microphone or camera is already being used by another app. Close that app and retry.";
+    if (name === "SecurityError" || (typeof window !== "undefined" && !window.isSecureContext)) return "Calls require a secure HTTPS page. Open ConnectX using its HTTPS address.";
+    if (typeof navigator !== "undefined" && !navigator.mediaDevices?.getUserMedia) return "This browser does not provide camera/microphone access. Open ConnectX in an updated browser over HTTPS.";
+    return detail || "The call could not be started. Check device permissions and your internet connection.";
+  }
+
   async function startCall(mode: "audio" | "video") {
     if (!selectedFriend || !userId || activeCall || incomingCall) return;
-    setError(""); setNotice(""); setCallStatus("Preparing call…");
+    setError(""); setNotice(""); setCallStatus("Checking devices…");
     let stream: MediaStream | null = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
+      if (typeof window === "undefined" || !window.isSecureContext) throw new DOMException("Calls require HTTPS.", "SecurityError");
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera and microphone access is unavailable in this browser. Open ConnectX over HTTPS in an updated browser.");
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: mode === "video" ? { facingMode: "user" } : false,
+      });
+      setCallStatus("Creating secure connection…");
       const pc = createCallPeer(stream);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -951,17 +969,21 @@ export default function ChatPreview() {
     } catch (reason) {
       stream?.getTracks().forEach((track) => track.stop());
       pcRef.current?.close(); pcRef.current = null; callIdRef.current = "";
+      callIdRef.current = "";
       setCallStatus("");
-      setError(reason instanceof Error ? reason.message : "Could not start the call. Check camera and microphone permissions.");
+      setError(callErrorMessage(reason, mode));
     }
   }
 
   async function acceptCall(call: CallSession) {
     let stream: MediaStream | null = null;
-    setError(""); setCallStatus("Joining call…");
+    setError(""); setCallStatus("Checking devices…");
     try {
+      if (typeof window === "undefined" || !window.isSecureContext) throw new DOMException("Calls require HTTPS.", "SecurityError");
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera and microphone access is unavailable in this browser. Open ConnectX over HTTPS in an updated browser.");
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: true, video: call.call_type === "video",
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: call.call_type === "video" ? { facingMode: "user" } : false,
       });
       callIdRef.current = call.id;
       const pc = createCallPeer(stream);
@@ -982,7 +1004,7 @@ export default function ChatPreview() {
       stream?.getTracks().forEach((track) => track.stop());
       pcRef.current?.close(); pcRef.current = null; callIdRef.current = "";
       setCallStatus("");
-      setError(reason instanceof Error ? reason.message : "Could not accept the call. Check camera and microphone permissions.");
+      setError(callErrorMessage(reason, call.call_type));
     }
   }
 
