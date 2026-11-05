@@ -2219,12 +2219,19 @@ export default function ChatPreview() {
         )}
       </section>
 
-      <nav className="mobile-nav" aria-label="Main navigation">
-        <span className="nav-indicator" aria-hidden="true" style={{ transform: `translate3d(calc(${tab === "Messages" ? 0 : tab === "Status" ? 1 : tab === "Friends" ? 2 : 3} * (100% + 3px)), 0, 0)` }} />
-        <button className={tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); groupMessageLoadRequestRef.current += 1; setSelectedGroup(null); setShowMobileChat(false); void loadGroups().catch((e) => setError(e.message)); }}><span>◆</span>Home</button>
-        <button className={tab === "Status" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Status"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◉</span>Status</button>
-        <button className={tab === "Friends" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Friends"); setShowMobileChat(false); }}><span>♧</span>Friends</button>
-        <button className={tab === "Settings" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Settings"); setShowMobileChat(false); }}><span>⚙</span>Settings</button>
+      <nav className="mobile-nav raised-nav" aria-label="Main navigation">
+        <button aria-current={tab === "Messages" ? "page" : undefined} className={tab === "Messages" ? "nav-item active nav-home" : "nav-item nav-home"} onClick={() => { setTab("Messages"); setSelectedFriend(null); groupMessageLoadRequestRef.current += 1; setSelectedGroup(null); setShowMobileChat(false); void loadGroups().catch((e) => setError(e.message)); }}>
+          <span className="nav-icon home-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5.5 9v11h13V9M9 20v-6h6v6" /></svg></span><span className="nav-label">Home</span>
+        </button>
+        <button aria-current={tab === "Status" ? "page" : undefined} className={tab === "Status" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Status"); setSelectedFriend(null); setShowMobileChat(false); }}>
+          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle className="status-dot" cx="12" cy="12" r="2.1"/></svg></span><span className="nav-label">Status</span>
+        </button>
+        <button aria-current={tab === "Friends" ? "page" : undefined} className={tab === "Friends" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Friends"); setShowMobileChat(false); }}>
+          <span className="nav-icon friends-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.4a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM17 4.5a3.5 3.5 0 0 1 0 6.8M17 14.7a4 4 0 0 1 4 4V20"/></svg></span>{incoming.length > 0 && <span className="nav-badge">{incoming.length > 99 ? "99+" : incoming.length}</span>}<span className="nav-label">Friends</span>
+        </button>
+        <button aria-current={tab === "Settings" ? "page" : undefined} className={tab === "Settings" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Settings"); setShowMobileChat(false); }}>
+          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 2Z" transform="translate(-1.5 -1.5) scale(1.12)"/></svg></span><span className="nav-label">Settings</span>
+        </button>
       </nav>
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
         {selectedGroup && tab === "Messages" ? <>
@@ -2668,9 +2675,23 @@ export default function ChatPreview() {
           .chat-row::after { content:"›";display:grid;place-items:center;.flex:0 0 32px;width:32px;height:32px;border-radius:50%;background:#f0edff;color:#654bc0;font-size:24px;font-weight:300; }
           .profile-row { flex-shrink:0;margin:8px 22px 96px;padding:13px 16px;border:1px solid #f0edff;border-radius:20px;background:#f7f6ff;box-shadow:0 5px 18px #3b287009;gap:13px; }
           .profile-avatar { width:52px;height:52px;object-fit:cover;font-size:16px; }.profile-row strong { color:#30245a;font-size:14px;font-weight:600; }.profile-row small { color:#81799f;font-size:12px; }.online-dot { color:#46bd9b;font-size:14px; }
-          .mobile-nav { position:fixed;z-index:10;left:30px;right:30px;bottom:calc(9px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:3px;padding:5px 6px;border-radius:22px;background:#fff;box-shadow:0 8px 35px #31205b20;border:1px solid #f4f1ff;isolation:isolate; }.nav-indicator { position:absolute;z-index:0;top:5px;bottom:5px;width:calc((100% - 21px)/4);border-radius:16px;background:#eeeaff;box-shadow:0 3px 10px #7354d71a;pointer-events:none;transition:transform 520ms cubic-bezier(.2,.85,.25,1),border-radius 220ms ease;will-change:transform; }
-          .nav-item { position:relative;z-index:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border:0;border-radius:16px;background:transparent;color:#716b91;font-size:11px;font-weight:500;transform:scale(1);transition:transform 130ms cubic-bezier(.2,.8,.2,1),color 220ms ease;touch-action:manipulation;-webkit-tap-highlight-color:transparent;will-change:transform;user-select:none; }
-          .nav-item span { font-size:20px;line-height:1.1;transition:transform 220ms cubic-bezier(.2,.8,.2,1); }.nav-item.active { background:transparent;color:#7354d7;transform:scale(1); }.nav-item.active span { transform:translateY(-1px) scale(1.08); }.nav-item:active { transform:scale(.88); }.nav-item:active span { transform:scale(.94); }.mobile-nav:has(.nav-item:active) .nav-indicator { border-radius:13px; }
+          .mobile-nav.raised-nav { position:fixed;z-index:10;left:22px;right:22px;bottom:calc(12px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;gap:2px;padding:12px 8px 10px;border-radius:42px;background:#191824;border:1px solid #302d42;box-shadow:0 12px 34px #08071166;isolation:isolate;min-height:112px; }
+          .raised-nav .nav-item { position:relative;z-index:1;min-width:0;height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:0 2px;border:0;border-radius:28px;background:transparent;color:#9992b5;font-size:clamp(12px,3.5vw,16px);font-weight:500;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none; }
+          .raised-nav .nav-icon { width:48px;height:48px;display:grid;place-items:center;position:relative; }
+          .raised-nav .nav-icon svg { width:42px;height:42px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round; }
+          .raised-nav .nav-icon .status-dot { fill:currentColor;stroke:none; }
+          .raised-nav .nav-label { display:block;white-space:nowrap;line-height:1.2; }
+          .raised-nav .nav-item.active { color:#c9baff;background:transparent; }
+          .raised-nav .nav-home { overflow:visible; }
+          .raised-nav .nav-home .home-icon { position:relative;width:76px;height:76px;margin-top:-47px;margin-bottom:-1px;border-radius:50%;background:#7955f5;color:#fff;border:7px solid #11101a;box-shadow:0 7px 0 #0e0d17,0 0 0 1px #3e365d; }
+          .raised-nav .nav-home .home-icon svg { width:42px;height:42px;stroke-width:2.1; }
+          .raised-nav .nav-home .nav-label { color:#c9baff;font-size:clamp(13px,3.8vw,17px); }
+          .raised-nav .nav-badge { position:absolute;top:0;left:calc(50% + 7px);min-width:27px;height:27px;padding:0 7px;display:grid;place-items:center;border-radius:999px;background:#fa526d;color:#fff;font-size:13px;font-weight:700;line-height:1;box-shadow:0 2px 8px #0003; }
+          .raised-nav .nav-item:active { transform:scale(.94); }
+          .cx-shell[data-theme="light"] .mobile-nav.raised-nav { background:#191824;border-color:#302d42; }
+          .cx-shell[data-theme="dark"] .mobile-nav.raised-nav { background:#191824;border-color:#302d42; }
+          .cx-shell[data-theme="dark"] .raised-nav .nav-item { color:#9992b5; }
+          .cx-shell[data-theme="dark"] .raised-nav .nav-item.active,.cx-shell[data-theme="dark"] .raised-nav .nav-home .nav-label { color:#c9baff; }
           .rail-btn { transition:transform 180ms cubic-bezier(.2,.8,.2,1),background-color 220ms ease,color 220ms ease;touch-action:manipulation;-webkit-tap-highlight-color:transparent; }.rail-btn:active { transform:scale(.9); }.rail-btn.selected { transition:transform 220ms ease,background-color 220ms ease,color 220ms ease;transform:scale(1.06); }
           .cx-conversation { display:none; }.cx-conversation.show-mobile { display:flex;position:fixed;inset:0;z-index:12;background:#fff;color:#211052;padding-bottom:env(safe-area-inset-bottom); }
           .cx-list.hide-mobile { display:none; }.back-btn { display:block;border:0;background:transparent;color:#6b50cb;font-size:30px; }
