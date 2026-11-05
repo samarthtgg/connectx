@@ -2932,25 +2932,25 @@ export default function ChatPreview() {
         .message-edit-inline button{min-height:36px;padding:7px 14px;border:1px solid #8b7be2;border-radius:9px;background:#7868eb;color:#fff;font-size:12px;font-weight:700}
         .message-edit-inline button:last-child{border-color:#a6a1b8;background:transparent;color:inherit}
         .message-edit-inline button:disabled{opacity:.45;cursor:not-allowed}
-        /* Clean header and integrated refresh control */
+        /* Compact clean header and integrated refresh control */
         @media(max-width:700px){
-          .cx-list:not(.hide-mobile) .list-head{min-height:100px;padding:17px 18px 13px;gap:10px;background:#171722}
-          .cx-list .cx-brand{font-size:27px;line-height:1.08;font-weight:700;letter-spacing:-1px;color:#f2efff}
-          .cx-list .cx-brand span{font-size:32px;vertical-align:-2px;margin-right:8px;color:#8563f5}
-          .cx-list .list-head p{margin-top:5px;font-size:14px;line-height:1.2;color:#aaa4bd}
-          .cx-list .list-head-actions{gap:13px;flex-shrink:0}
-          .cx-list .intelligence-launcher{height:54px;gap:10px;padding:5px 15px 5px 5px;border-radius:30px;background:#242337;border-color:#39344f;box-shadow:none}
-          .cx-list .intelligence-orb{width:42px;height:42px;font-size:23px;background:#31cbb8;color:#172a37;box-shadow:none}
-          .cx-list .intelligence-launcher-label{font-size:15px;font-weight:600}
-          .cx-list .header-profile{position:relative;width:58px;height:58px;flex:0 0 58px;border:3px solid #a68cff;border-radius:50%;background:#8068e8;color:#fff;font-size:22px;box-shadow:0 0 0 3px #171722}
-          .cx-list .header-profile::after{content:"";position:absolute;width:13px;height:13px;right:-1px;bottom:0;border:3px solid #171722;border-radius:50%;background:#32d6a1}
-          .cx-list .search-row{padding:0 18px;gap:0;margin-top:0}
-          .cx-list .search-row .search-box{height:58px;min-width:0;width:100%;flex:1;margin:0;padding:6px 7px 6px 18px;gap:12px;align-items:center;border:1px solid #37334e;border-radius:32px;background:#202033;color:#a49bbf;box-shadow:inset 0 1px 2px #ffffff08}
-          .cx-list .search-box .search-icon{font-size:28px;line-height:1;color:#a49bbf}
-          .cx-list .search-box input{min-width:0;flex:1;color:#f4f0ff;font-size:15px}
+          .cx-list:not(.hide-mobile) .list-head{min-height:92px;padding:14px 16px 11px;gap:9px;background:#171722}
+          .cx-list .cx-brand{font-size:25px;line-height:1.08;font-weight:700;letter-spacing:-.9px;color:#f2efff}
+          .cx-list .cx-brand span{font-size:29px;vertical-align:-2px;margin-right:7px;color:#8563f5}
+          .cx-list .list-head p{margin-top:4px;font-size:13px;line-height:1.2;color:#aaa4bd}
+          .cx-list .list-head-actions{gap:11px;flex-shrink:0}
+          .cx-list .intelligence-launcher{height:49px;gap:9px;padding:4px 13px 4px 4px;border-radius:27px;background:#242337;border-color:#39344f;box-shadow:none}
+          .cx-list .intelligence-orb{width:39px;height:39px;font-size:21px;background:#31cbb8;color:#172a37;box-shadow:none}
+          .cx-list .intelligence-launcher-label{font-size:14px;font-weight:600}
+          .cx-list .header-profile{position:relative;width:53px;height:53px;flex:0 0 53px;border:3px solid #a68cff;border-radius:50%;background:#8068e8;color:#fff;font-size:20px;box-shadow:0 0 0 3px #171722}
+          .cx-list .header-profile::after{content:"";position:absolute;width:12px;height:12px;right:-1px;bottom:0;border:3px solid #171722;border-radius:50%;background:#32d6a1}
+          .cx-list .search-row{padding:0 16px;gap:0;margin-top:0}
+          .cx-list .search-row .search-box{height:53px;min-width:0;width:100%;flex:1;margin:0;padding:5px 6px 5px 16px;gap:10px;align-items:center;border:1px solid #37334e;border-radius:29px;background:#202033;color:#a49bbf;box-shadow:inset 0 1px 2px #ffffff08}
+          .cx-list .search-box .search-icon{font-size:25px;line-height:1;color:#a49bbf}
+          .cx-list .search-box input{min-width:0;flex:1;color:#f4f0ff;font-size:14px}
           .cx-list .search-box input::placeholder{color:#928ba9;opacity:1}
-          .cx-list .search-row .refresh-btn{width:48px;height:48px;min-width:48px;flex:0 0 48px;display:grid;place-items:center;margin:0;padding:0;border:0;border-radius:50%;background:#7955f5;color:#fff}
-          .cx-list .search-row .refresh-btn span{font-size:29px;line-height:1;margin:0}
+          .cx-list .search-row .refresh-btn{width:44px;height:44px;min-width:44px;flex:0 0 44px;display:grid;place-items:center;margin:0;padding:0;border:0;border-radius:50%;background:#7955f5;color:#fff}
+          .cx-list .search-row .refresh-btn span{font-size:26px;line-height:1;margin:0}
         }
       `}</style>
     </main>
