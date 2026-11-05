@@ -235,6 +235,7 @@ export default function ChatPreview() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const messagesAreaRef = useRef<HTMLDivElement>(null);
   const messageLoadRequestRef = useRef(0);
+  const groupMessageLoadRequestRef = useRef(0);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDescription, setNewGroupDescription] = useState("");
@@ -261,6 +262,7 @@ export default function ChatPreview() {
     if (next < 0 || next >= mainTabOrder.length) return;
     setTab(mainTabOrder[next]);
     setSelectedFriend(null);
+    groupMessageLoadRequestRef.current += 1;
     setSelectedGroup(null);
     setShowMobileChat(false);
     setViewingStatusUser(null);
@@ -523,6 +525,7 @@ export default function ChatPreview() {
         if (memberError) throw memberError;
       }
       await loadGroups();
+      groupMessageLoadRequestRef.current += 1;
       setSelectedGroup(null); setSelectedFriend(null);
       setShowMobileChat(false); setTab("Messages"); setShowCreateGroup(false);
       setNewGroupName(""); setNewGroupDescription(""); setSelectedGroupMembers([]);
@@ -727,11 +730,20 @@ export default function ChatPreview() {
    }
    async function manageGroupMember(memberId:string,action:"admin"|"member"|"remove"){if(!selectedGroup)return;const query=action==="remove"?supabase.from("chat_group_members").delete().eq("group_id",selectedGroup.id).eq("user_id",memberId):supabase.from("chat_group_members").update({role:action}).eq("group_id",selectedGroup.id).eq("user_id",memberId);const {error}=await query;if(error){setError(error.message);return;}await loadGroupProfile(selectedGroup);await loadGroups();}
   async function openGroup(group: ChatGroup) {
+    const requestId = ++groupMessageLoadRequestRef.current;
     setSelectedGroup(group); setSelectedFriend(null); setShowMobileChat(true); setTab("Messages"); setError("");
+    setGroupMessages([]);
     const { data, error } = await supabase.from("chat_group_messages").select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id,edited_at").eq("group_id", group.id).order("created_at", { ascending: false }).limit(100);
+    if (requestId !== groupMessageLoadRequestRef.current) return;
     if (error) { setError(error.message); return; }
     setGroupMessages(((data ?? []) as GroupMessage[]).reverse());
-    try { await loadGroupProfile(group); } catch (e) { setError(e instanceof Error ? e.message : "Could not load group extras."); }
+    try {
+      await loadGroupProfile(group);
+    } catch (e) {
+      if (requestId === groupMessageLoadRequestRef.current) {
+        setError(e instanceof Error ? e.message : "Could not load group extras.");
+      }
+    }
   }
   function startReplySwipe(event: TouchEvent, message: { id: string; content: string; sender_id: string }, kind: "direct" | "group") {
     const touch = event.touches[0];
@@ -755,6 +767,7 @@ export default function ChatPreview() {
     event.preventDefault();
     const content = groupDraft.trim();
     const group = selectedGroup;
+    const requestId = groupMessageLoadRequestRef.current;
     if (!content || !group || !userId || busy) return;
     const optimisticId = `optimistic-${crypto.randomUUID()}`;
     const reply = replyTarget?.kind === "group" ? replyTarget : null;
@@ -784,6 +797,7 @@ export default function ChatPreview() {
         reply_to_sender_id: reply?.sender_id ?? null,
       }).select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if (error) throw error;
+      if (requestId !== groupMessageLoadRequestRef.current) return;
       if (!data) throw new Error("Message was not saved. Please try again.");
       const saved = data as GroupMessage;
       setGroupMessages((old) => {
@@ -794,21 +808,28 @@ export default function ChatPreview() {
       });
       setReplyTarget(null);
     } catch (e) {
-      setGroupMessages((old) => old.filter((item) => item.id !== optimisticId));
-      setGroupDraft(content);
-      setError(e instanceof Error ? e.message : "Could not send group message.");
+      if (requestId === groupMessageLoadRequestRef.current) {
+        setGroupMessages((old) => old.filter((item) => item.id !== optimisticId));
+        setGroupDraft(content);
+        setError(e instanceof Error ? e.message : "Could not send group message.");
+      }
     } finally {
       setBusy(false);
     }
   }
   useEffect(() => {
     if (!selectedGroup || !userId) return;
+    let active = true;
     const channel = supabase.channel("group-messages-" + selectedGroup.id)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_group_messages", filter: "group_id=eq." + selectedGroup.id }, (payload) => {
+        if (!active) return;
         const row = payload.new as GroupMessage;
         setGroupMessages((old) => old.some((item) => item.id === row.id) ? old : [...old, row]);
       }).subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
   }, [selectedGroup?.id, userId]);
 
   useEffect(() => {
@@ -925,6 +946,7 @@ export default function ChatPreview() {
     }
     // Switch the active conversation type explicitly. Without clearing the
     // group selection, the group-render branch takes precedence over a friend.
+    groupMessageLoadRequestRef.current += 1;
     setSelectedGroup(null);
     setGroupMessages([]);
     setSelectedFriend(friend);
@@ -1972,7 +1994,7 @@ export default function ChatPreview() {
 
       <nav className="mobile-nav" aria-label="Main navigation">
         <span className="nav-indicator" aria-hidden="true" style={{ transform: `translate3d(calc(${tab === "Messages" ? 0 : tab === "Status" ? 1 : tab === "Friends" ? 2 : 3} * (100% + 3px)), 0, 0)` }} />
-        <button className={tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); setSelectedGroup(null); setShowMobileChat(false); void loadGroups().catch((e) => setError(e.message)); }}><span>◆</span>Home</button>
+        <button className={tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); groupMessageLoadRequestRef.current += 1; setSelectedGroup(null); setShowMobileChat(false); void loadGroups().catch((e) => setError(e.message)); }}><span>◆</span>Home</button>
         <button className={tab === "Status" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Status"); setSelectedFriend(null); setShowMobileChat(false); }}><span>◉</span>Status</button>
         <button className={tab === "Friends" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Friends"); setShowMobileChat(false); }}><span>♧</span>Friends</button>
         <button className={tab === "Settings" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Settings"); setShowMobileChat(false); }}><span>⚙</span>Settings</button>
