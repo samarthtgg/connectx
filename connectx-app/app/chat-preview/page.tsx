@@ -1422,7 +1422,7 @@ export default function ChatPreview() {
     try{
       const ext=blobToSend.type.includes("mp4")?"m4a":"webm";
       const key=userId+"/"+crypto.randomUUID()+"."+ext;
-      const {error:uploadError}=await supabase.storage.from("connectx-voice-notes").upload(key,voiceBlob,{contentType:blobToSend.type});
+      const {error:uploadError}=await supabase.storage.from("connectx-voice-notes").upload(key,blobToSend,{contentType:blobToSend.type});
       if(uploadError)throw uploadError;
       const url=supabase.storage.from("connectx-voice-notes").getPublicUrl(key).data.publicUrl;
       const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice",reply_to_id:replyTarget?.kind === "direct" ? replyTarget.id : null,reply_to_content:replyTarget?.kind === "direct" ? replyTarget.content : null,reply_to_sender_id:replyTarget?.kind === "direct" ? replyTarget.sender_id : null}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
