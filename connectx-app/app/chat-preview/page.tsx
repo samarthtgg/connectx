@@ -66,6 +66,48 @@ const initials = (name: string) =>
 const timeLabel = (value: string) =>
   new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+function VoiceMessagePlayer({ src, mine }: { src: string; mine: boolean }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const bars = [5,10,17,25,13,31,20,11,27,18,8,23,14,29,17,9,24,14,7,19,11,26,15,8,20,12,6,17,10,5];
+  const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    return Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0");
+  };
+  const togglePlayback = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      try { await audio.play(); } catch { setPlaying(false); }
+    } else audio.pause();
+  };
+  const seek = (event: React.MouseEvent<HTMLDivElement>) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration) || !audio.duration) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    audio.currentTime = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * audio.duration;
+  };
+  return (
+    <div className={`voice-message-player ${mine ? "voice-message-mine" : ""}`}>
+      <audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={e => setDuration(e.currentTarget.duration || 0)}
+        onTimeUpdate={e => { const audio=e.currentTarget; setCurrentTime(audio.currentTime); setProgress(audio.duration ? audio.currentTime/audio.duration : 0); }}
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setProgress(0); setCurrentTime(0); if(audioRef.current) audioRef.current.currentTime=0; }} />
+      <button type="button" className="voice-play-button" onClick={() => void togglePlayback()} aria-label={playing ? "Pause voice message" : "Play voice message"}>
+        {playing ? <span className="voice-pause-icon">Ⅱ</span> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.8 19 12 8 19.2Z" /></svg>}
+      </button>
+      <div className="voice-wave-track" role="progressbar" aria-label="Voice message playback" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress*100)} onClick={seek}>
+        <div className="voice-wave-fill" style={{width:`${progress*100}%`}} />
+        <div className="voice-wave-bars">{bars.map((height,index)=><span key={index} style={{height:height+"px"}} />)}</div>
+      </div>
+      <span className="voice-time">{playing || currentTime > 0 ? formatTime(currentTime) : formatTime(duration)}</span>
+    </div>
+  );
+}
+
 export default function ChatPreview() {
   const [darkMode, setDarkMode] = useState(false);
   const [themeLoaded, setThemeLoaded] = useState(false);
@@ -498,7 +540,7 @@ export default function ChatPreview() {
       try {
         const { data, error: searchError } = await supabase.from("profiles")
           .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen")
-          .eq("username", username).neq("id", userId).maybeSingle();
+          .eq("username", username).maybeSingle();
         if (searchError) throw searchError;
         if (active) setUsernameSearchProfile(data as Profile | null);
       } catch (reason) {
@@ -2105,10 +2147,10 @@ export default function ChatPreview() {
                 (r.sender_id === userId && r.receiver_id === profile.id) ||
                 (r.sender_id === profile.id && r.receiver_id === userId)
               );
-              const canMessage = !profile.is_private || acceptedIds.has(profile.id);
+              const canMessage = profile.id === userId || !profile.is_private || acceptedIds.has(profile.id);
               const label = relation?.status === "pending"
                 ? (relation.sender_id === userId ? "Requested" : "Respond below")
-                : canMessage ? "Message" : "Add friend";
+                : profile.id === userId ? "Message yourself" : canMessage ? "Message" : "Add friend";
               return <div className="person-row" key={profile.id}>
                 {profile.avatar_url ? <img className="avatar" src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}
                 <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}{profile.is_private ? " · Private" : " · Public"}</small></span>
@@ -2234,7 +2276,7 @@ export default function ChatPreview() {
               const mine = message.sender_id === userId;
               const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
               return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "") + (message.id.startsWith("optimistic-") ? " message-sending" : "")} onClick={() => { if (messageSelectionMode) toggleMessageSelection(message.id); }} onTouchStart={(e) => { if (!messageSelectionMode) startReplySwipe(e, message, "direct"); }} onTouchEnd={(e) => { if (!messageSelectionMode) finishReplySwipe(e, message, "direct"); }}>
-                <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_content.startsWith("STATUS_REPLY|") ? "Replied to your status" : message.reply_to_content.startsWith("STATUS_REACTION|") ? "Reacted to your status" : message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content.replace(/^STATUS_(?:REPLY|REACTION)\|/, "")}</span></div>}{message.message_type === "voice" ? <audio controls preload="metadata" src={message.content} className="voice-player" /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : (editingMessageId === message.id && mine ? null : <p>{message.content}</p>)}
+                <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_content.startsWith("STATUS_REPLY|") ? "Replied to your status" : message.reply_to_content.startsWith("STATUS_REACTION|") ? "Reacted to your status" : message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content.replace(/^STATUS_(?:REPLY|REACTION)\|/, "")}</span></div>}{message.message_type === "voice" ? <VoiceMessagePlayer src={message.content} mine={mine} /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : (editingMessageId === message.id && mine ? null : <p>{message.content}</p>)}
                   {editingMessageId === message.id && mine && message.message_type === "text" && <div className="message-edit-inline"><textarea rows={3} maxLength={5000} value={editMessageDraft} onChange={(event) => setEditMessageDraft(event.target.value)} aria-label="Edit message" /><div><button type="button" disabled={!editMessageDraft.trim() || editMessageBusy} onClick={() => void saveEditedMessage(message)}>{editMessageBusy ? "Saving…" : "Save"}</button><button type="button" onClick={() => { setEditingMessageId(null); setEditMessageDraft(""); }}>Cancel</button></div></div>}
                   <small>{message.edited_at ? "Edited · " : ""}{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
@@ -2816,6 +2858,23 @@ export default function ChatPreview() {
         .intelligence-composer button{width:40px;height:40px;flex:0 0 40px;border:0;border-radius:13px;background:linear-gradient(135deg,#8d78f5,#6354cf);color:white;font-size:20px}.intelligence-composer button:disabled{opacity:.4}
         .intelligence-disclaimer{margin:9px 14px calc(10px + env(safe-area-inset-bottom));color:#74798e;font-size:9px;text-align:center;line-height:1.4}
         @media(max-width:700px){.list-head-actions{gap:10px}.intelligence-launcher{padding:4px 8px 4px 4px}.intelligence-orb{width:32px;height:32px;font-size:21px}.intelligence-backdrop{align-items:stretch;padding:0;background:#090b13}.intelligence-panel{width:100%;height:100dvh;min-height:0;border:0;border-radius:0;padding-bottom:env(safe-area-inset-bottom)}.intelligence-head{padding:calc(12px + env(safe-area-inset-top)) 15px 12px}.intelligence-thread{padding:17px 14px}.intelligence-welcome h2{font-size:22px}.intelligence-suggestions{gap:8px}.intelligence-suggestions button{min-height:54px;padding:9px;font-size:10px}.intelligence-context{padding:10px 14px}.intelligence-composer{margin:0 12px}.intelligence-disclaimer{margin-bottom:calc(9px + env(safe-area-inset-bottom))}}
+        /* Voice notes: custom capsule player with live playback fill */
+        .voice-message-player{display:flex;align-items:center;gap:10px;width:min(310px,72vw);min-width:205px;height:62px;padding:6px 12px 6px 7px;border:1px solid #514477;border-radius:999px;background:#28213f;color:#fff;overflow:hidden}
+        .voice-message-player audio{display:none}
+        .voice-play-button{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border:0;border-radius:50%;background:#fff;color:#5d4ab7}
+        .voice-play-button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linejoin:round}
+        .voice-pause-icon{font-size:22px;font-weight:800;line-height:1}
+        .voice-wave-track{position:relative;display:flex;align-items:center;flex:1;min-width:0;height:48px;overflow:hidden;cursor:pointer}
+        .voice-wave-fill{position:absolute;inset:0 auto 0 0;background:#7957f4;opacity:.95;pointer-events:none}
+        .voice-wave-bars{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:3px;width:100%;height:100%;padding:0 1px;pointer-events:none}
+        .voice-wave-bars span{display:block;flex:1;min-width:2px;max-width:4px;border-radius:5px;background:#fff}
+        .voice-time{flex:0 0 auto;min-width:39px;text-align:right;color:#fff;font-size:14px;font-variant-numeric:tabular-nums}
+        .bubble:not(.mine-bubble) .voice-message-player{border-color:#ded8ef;background:#eeeafd;color:#51447e}
+        .bubble:not(.mine-bubble) .voice-play-button{background:#7654f5;color:#fff}
+        .bubble:not(.mine-bubble) .voice-wave-bars span{background:#7765ad}
+        .bubble:not(.mine-bubble) .voice-wave-fill{background:#d3c7ff}
+        .bubble:not(.mine-bubble) .voice-time{color:#39324f}
+        @media(max-width:700px){.voice-message-player{width:min(280px,68vw);min-width:190px;height:56px;gap:8px}.voice-play-button{width:44px;height:44px;flex-basis:44px}.voice-wave-track{height:44px}.voice-wave-bars{gap:2px}.voice-wave-bars span{max-width:3px}.voice-time{font-size:13px;min-width:36px}}
         /* Compact voice-first direct-message composer */
         .composer-modern{display:block!important;flex:0 0 auto!important;padding:12px 14px calc(12px + env(safe-area-inset-bottom))!important;border-top:1px solid #2a293a!important;background:#11111b!important}
         .composer-modern .reply-compose{margin-bottom:10px;background:#242238;color:#eeeaff;border-color:#8c78ff}
