@@ -234,6 +234,7 @@ export default function ChatPreview() {
   const [replyTarget, setReplyTarget] = useState<{ id: string; content: string; sender_id: string; kind: "direct" | "group" } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const messagesAreaRef = useRef<HTMLDivElement>(null);
+  const messageLoadRequestRef = useRef(0);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDescription, setNewGroupDescription] = useState("");
@@ -826,13 +827,14 @@ export default function ChatPreview() {
 
   useEffect(() => { if (userId) void loadChatPreferences().catch((e) => setError(e.message)); }, [userId, loadChatPreferences]);
 
-  const loadMessages = useCallback(async (friendId: string) => {
+  const loadMessages = useCallback(async (friendId: string, requestId: number) => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
       .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired,reply_to_id,reply_to_content,reply_to_sender_id")
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${userId})`)
       .order("created_at", { ascending: false }).limit(100);
     if (messageError) throw messageError;
+    if (requestId !== messageLoadRequestRef.current) return;
     const pref = chatPreferences.find((item) => item.friend_id === friendId);
     const visible = (data ?? []).filter((item) => !pref?.cleared_at || new Date(item.created_at) > new Date(pref.cleared_at));
     const now = Date.now();
@@ -845,6 +847,7 @@ export default function ChatPreview() {
     if (uniquePaths.length) {
       const { data: signedRows, error: signedError } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrls(uniquePaths, shortestExpiry);
       if (signedError) throw signedError;
+      if (requestId !== messageLoadRequestRef.current) return;
       for (const signed of signedRows ?? []) {
         if (signed.path && signed.signedUrl) signedUrlByPath.set(signed.path, signed.signedUrl);
       }
@@ -855,28 +858,37 @@ export default function ChatPreview() {
         ? signedUrlByPath.get(item.media_path) ?? null
         : null,
     }));
+    if (requestId !== messageLoadRequestRef.current) return;
     setMessages((messagesWithUrls as DirectMessage[]).reverse());
     const ids = visible.map((item) => item.id);
     if (ids.length) {
       const { data: reactionRows, error: reactionError } = await supabase.from("message_reactions")
         .select("id,message_id,user_id,emoji").in("message_id", ids);
       if (reactionError) throw reactionError;
+      if (requestId !== messageLoadRequestRef.current) return;
       setReactions((reactionRows ?? []) as MessageReaction[]);
     } else setReactions([]);
+    if (requestId !== messageLoadRequestRef.current) return;
     await supabase.from("messages").update({ read_at: new Date().toISOString() })
       .eq("sender_id", friendId).eq("receiver_id", userId).is("read_at", null);
   }, [userId, chatPreferences]);
 
   useEffect(() => {
     if (!userId || !selectedFriend) {
+      messageLoadRequestRef.current += 1;
       setMessages([]);
+      setReactions([]);
       return;
     }
     let active = true;
-    loadMessages(selectedFriend.id).catch((reason: unknown) => {
+    const requestId = ++messageLoadRequestRef.current;
+    setMessages([]);
+    setReactions([]);
+    loadMessages(selectedFriend.id, requestId).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "Could not load messages.");
     });
     const handleDirectMessage = (payload: { new: Record<string, unknown> }) => {
+      if (!active) return;
       const row = payload.new as unknown as DirectMessage;
       const belongsToChat =
         (row.sender_id === userId && row.receiver_id === selectedFriend.id) ||
@@ -889,6 +901,7 @@ export default function ChatPreview() {
           const { data: signed } = await supabase.storage.from("connectx-temporary-chat-media").createSignedUrl(row.media_path, remainingSeconds);
           incoming = { ...row, media_url: signed?.signedUrl ?? null };
         }
+        if (!active) return;
         setMessages((old) => old.some((item) => item.id === incoming.id) ? old : [...old, incoming]);
       })();
     };
@@ -900,6 +913,7 @@ export default function ChatPreview() {
       .subscribe();
     return () => {
       active = false;
+      if (messageLoadRequestRef.current === requestId) messageLoadRequestRef.current += 1;
       void supabase.removeChannel(channel);
     };
   }, [userId, selectedFriend, loadMessages]);
