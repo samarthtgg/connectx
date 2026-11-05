@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, TouchEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { FormEvent, TouchEvent, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Profile = {
@@ -84,7 +84,7 @@ function VoiceMessagePlayer({ src, mine }: { src: string; mine: boolean }) {
       try { await audio.play(); } catch { setPlaying(false); }
     } else audio.pause();
   };
-  const seek = (event: React.MouseEvent<HTMLDivElement>) => {
+  const seek = (event: ReactMouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(audio.duration) || !audio.duration) return;
     const rect = event.currentTarget.getBoundingClientRect();
