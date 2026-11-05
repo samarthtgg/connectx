@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, TouchEvent } from "react";
+import type { FormEvent, TouchEvent, PointerEvent as ReactPointerEvent } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Profile = {
@@ -282,8 +282,15 @@ export default function ChatPreview() {
   const [statusReply,setStatusReply]=useState("");
   const [statusReplyBusy,setStatusReplyBusy]=useState(false);
   const [recording,setRecording]=useState(false);
+  const [recordingLocked,setRecordingLocked]=useState(false);
+  const [recordingSeconds,setRecordingSeconds]=useState(0);
+  const voiceGestureRef=useRef<{x:number;y:number}|null>(null);
+  const voiceLockedRef=useRef(false);
+  const voiceCancelRef=useRef(false);
+  const stopAfterStartRef=useRef(false);
   const [voiceBlob,setVoiceBlob]=useState<Blob|null>(null);
   const [voicePreview,setVoicePreview]=useState("");
+  useEffect(()=>{if(!recording)return;const started=Date.now();const timer=window.setInterval(()=>setRecordingSeconds(Math.floor((Date.now()-started)/1000)),250);return()=>window.clearInterval(timer);},[recording]);
   const recorderRef=useRef<MediaRecorder|null>(null);
   const chunksRef=useRef<Blob[]>([]);
   const statusInputRef=useRef<HTMLInputElement|null>(null);
@@ -1363,11 +1370,43 @@ export default function ChatPreview() {
       const recorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
       chunksRef.current=[];
       recorder.ondataavailable=e=>{if(e.data.size)chunksRef.current.push(e.data);};
-      recorder.onstop=()=>{const blob=new Blob(chunksRef.current,{type:recorder.mimeType||"audio/webm"});setVoiceBlob(blob);setVoicePreview(URL.createObjectURL(blob));stream.getTracks().forEach(t=>t.stop());};
-      recorderRef.current=recorder;recorder.start();setRecording(true);
-    }catch(e){setError(e instanceof Error?e.message:"Microphone access failed.");}
+      recorder.onstop=()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        if(voiceCancelRef.current){chunksRef.current=[];voiceCancelRef.current=false;setVoiceBlob(null);setVoicePreview("");return;}
+        const blob=new Blob(chunksRef.current,{type:recorder.mimeType||"audio/webm"});
+        if(blob.size){setVoiceBlob(blob);setVoicePreview(URL.createObjectURL(blob));}
+      };
+      recorderRef.current=recorder;recorder.start();setRecording(true);setRecordingSeconds(0);
+      if(stopAfterStartRef.current&&!voiceLockedRef.current){stopAfterStartRef.current=false;recorder.stop();setRecording(false);}
+    }catch(e){setRecording(false);setRecordingLocked(false);voiceGestureRef.current=null;voiceLockedRef.current=false;stopAfterStartRef.current=false;setError(e instanceof Error?e.message:"Microphone access failed.");}
   }
-  function stopVoiceRecording(){if(recorderRef.current?.state==="recording"){recorderRef.current.stop();setRecording(false);}}
+  function stopVoiceRecording(){
+    if(recorderRef.current?.state==="recording"){recorderRef.current.stop();setRecording(false);}
+    else if(!recorderRef.current){stopAfterStartRef.current=true;}
+  }
+  function cancelVoiceRecording(){
+    voiceCancelRef.current=true;voiceLockedRef.current=false;setRecordingLocked(false);setRecording(false);
+    if(recorderRef.current?.state==="recording")recorderRef.current.stop();
+    else if(!recorderRef.current)stopAfterStartRef.current=true;
+  }
+  function handleVoicePointerDown(event:ReactPointerEvent<HTMLButtonElement>){
+    if(busy||voiceBlob||attachment||recording)return;
+    event.preventDefault();event.currentTarget.setPointerCapture(event.pointerId);
+    voiceGestureRef.current={x:event.clientX,y:event.clientY};voiceLockedRef.current=false;voiceCancelRef.current=false;stopAfterStartRef.current=false;
+    void startVoiceRecording();
+  }
+  function handleVoicePointerMove(event:ReactPointerEvent<HTMLButtonElement>){
+    const start=voiceGestureRef.current;if(!start)return;
+    const dx=event.clientX-start.x,dy=event.clientY-start.y;
+    if(dx < -85){voiceGestureRef.current=null;cancelVoiceRecording();return;}
+    if(dy < -70&&!voiceLockedRef.current){voiceLockedRef.current=true;setRecordingLocked(true);}
+  }
+  function handleVoicePointerUp(){
+    if(!voiceGestureRef.current)return;
+    voiceGestureRef.current=null;
+    if(!voiceLockedRef.current)stopVoiceRecording();
+  }
+  function handleVoicePointerCancel(){if(voiceGestureRef.current){voiceGestureRef.current=null;cancelVoiceRecording();}}
   async function sendVoiceMessage(){
     if(!voiceBlob||!userId||!selectedFriend||busy)return;
     if(selectedFriend.is_private && selectedFriend.id !== userId && !acceptedIds.has(selectedFriend.id)){
@@ -2201,27 +2240,34 @@ export default function ChatPreview() {
             })}
             {messages.length === 0 && <div className="cx-empty-chat"><div className="cx-empty-art" aria-hidden="true"><span className="cx-empty-orbit orbit-one"/><span className="cx-empty-orbit orbit-two"/><span className="cx-empty-bubble">✦</span><span className="cx-empty-dot dot-one"/><span className="cx-empty-dot dot-two"/></div><strong>No messages yet</strong><p>Say hi and make the first move.</p><span className="cx-empty-hint">Your conversation starts here</span></div>}
           </div>
-          <form className="composer" onSubmit={sendMessage}>
+          <form className="composer composer-modern" onSubmit={sendMessage}>
             {replyTarget?.kind === "direct" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : activeName}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}
-            <label className="attach-btn" aria-label="Attach photo or video">＋
-              <input ref={attachmentInputRef} className="attachment-input" type="file" accept="image/jpeg,image/png,image/webp,video/mp4" disabled={!!voiceBlob} onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                if (!file) return;
-                if (file.size > 20 * 1024 * 1024) { setError("The maximum photo/video size is 20 MB."); event.target.value = ""; return; }
-                if (!["image/jpeg", "image/png", "image/webp", "video/mp4"].includes(file.type)) { setError("Choose a JPG, PNG, WEBP image or MP4 video."); event.target.value = ""; return; }
-                setError(""); setAttachment(file);
-              }} />
-            </label>
-            <button type="button" className="mic-btn" disabled={busy||!!voiceBlob||!!attachment} onClick={recording?stopVoiceRecording:startVoiceRecording} aria-label={recording?"Stop recording":"Record voice message"}>{recording?"■":"🎙"}</button>
-            <textarea className="composer-textarea" rows={1} value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, window.innerHeight * 0.35)}px`; }} placeholder={attachment ? "Add a caption (optional)…" : "Write a message…"} maxLength={5000} aria-label="Message" />
+            <input ref={attachmentInputRef} className="attachment-input" type="file" accept="image/jpeg,image/png,image/webp,video/mp4" disabled={!!voiceBlob||recording} onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              if (!file) return;
+              if (file.size > 20 * 1024 * 1024) { setError("The maximum photo/video size is 20 MB."); event.target.value = ""; return; }
+              if (!["image/jpeg", "image/png", "image/webp", "video/mp4"].includes(file.type)) { setError("Choose a JPG, PNG, WEBP image or MP4 video."); event.target.value = ""; return; }
+              setError(""); setAttachment(file);
+            }} />
+            <div className="composer-main-row">
+              <button type="button" className="attach-btn" aria-label="Attach photo or video" disabled={recording||!!voiceBlob} onClick={()=>attachmentInputRef.current?.click()}>＋</button>
+              {recording ? <div className="recording-strip">
+                <span className="recording-live-dot"/><strong>{Math.floor(recordingSeconds/60)}:{String(recordingSeconds%60).padStart(2,"0")}</strong>
+                <span className="recording-hint">{recordingLocked?"Recording locked · tap stop when finished":"Slide up to lock · slide left to cancel"}</span>
+                {recordingLocked && <><button type="button" className="recording-cancel" onClick={cancelVoiceRecording} aria-label="Cancel voice recording">×</button><button type="button" className="recording-stop" onClick={()=>{voiceLockedRef.current=false;setRecordingLocked(false);stopVoiceRecording();}} aria-label="Stop voice recording">■</button></>}
+              </div> : <div className="composer-input-wrap">
+                <textarea className="composer-textarea" rows={1} value={draft} onChange={(e) => { setDraft(e.target.value); void broadcastTyping(e.target.value); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, window.innerHeight * 0.35)}px`; }} placeholder={attachment ? "Add a caption (optional)…" : "Write a message…"} maxLength={5000} aria-label="Message" />
+                <button type="button" className="composer-inline-icon" aria-label="Insert emoji" onClick={()=>setDraft(current=>current+"😊")}>☺</button>
+                <button type="button" className="composer-inline-icon" aria-label="Attach photo or video" onClick={()=>attachmentInputRef.current?.click()}>⌁</button>
+              </div>}
+              {draft.trim()||attachment ? <button type="submit" className="composer-send-btn" disabled={busy||!selectedFriend||!userId} aria-label="Send message">{busy?"…":"➤"}</button> : voiceBlob ? <span className="voice-ready-indicator">Voice ready</span> : <button type="button" className="mic-btn" disabled={busy||!!voiceBlob||!!attachment} onPointerDown={handleVoicePointerDown} onPointerMove={handleVoicePointerMove} onPointerUp={handleVoicePointerUp} onPointerCancel={handleVoicePointerCancel} aria-label="Hold to record a voice message">🎙</button>}
+            </div>
             {attachment && <div className="attachment-preview">
               {attachment.type.startsWith("image/") ? <img src={attachmentPreview} alt="Selected attachment preview" /> : <video src={attachmentPreview} muted playsInline />}
               <span>{attachment.name}</span>
               <button type="button" aria-label="Remove attachment" onClick={() => { setAttachment(null); if (attachmentInputRef.current) attachmentInputRef.current.value = ""; }}>×</button>
             </div>}
-            {recording && <span className="recording-label">Recording…</span>}
             {voiceBlob && <div className="voice-preview"><audio controls src={voicePreview} /><button type="button" onClick={()=>{setVoiceBlob(null);URL.revokeObjectURL(voicePreview);setVoicePreview("");}}>×</button><button type="button" disabled={busy} onClick={sendVoiceMessage}>Send voice</button></div>}
-            <button type="button" className="send" disabled={busy || !selectedFriend || !userId} onClick={() => void sendMessage()} aria-label="Send message">{busy ? "…" : "➤"}</button>
           </form>
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
       </section>
@@ -2764,6 +2810,35 @@ export default function ChatPreview() {
         .intelligence-composer button{width:40px;height:40px;flex:0 0 40px;border:0;border-radius:13px;background:linear-gradient(135deg,#8d78f5,#6354cf);color:white;font-size:20px}.intelligence-composer button:disabled{opacity:.4}
         .intelligence-disclaimer{margin:9px 14px calc(10px + env(safe-area-inset-bottom));color:#74798e;font-size:9px;text-align:center;line-height:1.4}
         @media(max-width:700px){.list-head-actions{gap:10px}.intelligence-launcher{padding:4px 8px 4px 4px}.intelligence-orb{width:32px;height:32px;font-size:21px}.intelligence-backdrop{align-items:stretch;padding:0;background:#090b13}.intelligence-panel{width:100%;height:100dvh;min-height:0;border:0;border-radius:0;padding-bottom:env(safe-area-inset-bottom)}.intelligence-head{padding:calc(12px + env(safe-area-inset-top)) 15px 12px}.intelligence-thread{padding:17px 14px}.intelligence-welcome h2{font-size:22px}.intelligence-suggestions{gap:8px}.intelligence-suggestions button{min-height:54px;padding:9px;font-size:10px}.intelligence-context{padding:10px 14px}.intelligence-composer{margin:0 12px}.intelligence-disclaimer{margin-bottom:calc(9px + env(safe-area-inset-bottom))}}
+        /* Compact voice-first direct-message composer */
+        .composer-modern{display:block!important;flex:0 0 auto!important;padding:12px 14px calc(12px + env(safe-area-inset-bottom))!important;border-top:1px solid #2a293a!important;background:#11111b!important}
+        .composer-modern .reply-compose{margin-bottom:10px;background:#242238;color:#eeeaff;border-color:#8c78ff}
+        .composer-main-row{display:flex;align-items:center;gap:10px;min-width:0}
+        .composer-modern .attach-btn{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border:0;border-radius:50%;background:#24243a;color:#c5b9ff;font-size:29px;font-weight:300;line-height:1}
+        .composer-modern .attach-btn:disabled{opacity:.45}
+        .composer-modern .attachment-input{display:none}
+        .composer-input-wrap{display:flex;align-items:center;gap:7px;flex:1;min-width:0;min-height:48px;padding:0 10px 0 14px;border:1px solid #34334c;border-radius:28px;background:#222238;transition:border-color .16s,box-shadow .16s}
+        .composer-input-wrap:focus-within{border-color:#8063f2;box-shadow:0 0 0 1px #8063f255}
+        .composer-modern .composer-textarea{flex:1;min-width:0;width:0;min-height:44px;max-height:112px;margin:0;padding:11px 0;border:0!important;border-radius:0!important;outline:0;background:transparent!important;color:#f4f1ff!important;font-size:14px;line-height:1.35;resize:none;box-shadow:none!important}
+        .composer-modern .composer-textarea::placeholder{color:#9290b0}
+        .composer-inline-icon{display:grid;place-items:center;flex:0 0 28px;width:28px;height:34px;padding:0;border:0;background:transparent;color:#a9a2d0;font-size:22px}
+        .composer-send-btn,.composer-modern .mic-btn{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border:0;border-radius:50%;background:#7654f5;color:white;font-size:24px;line-height:1;box-shadow:0 4px 14px #7654f533}
+        .composer-send-btn:disabled,.composer-modern .mic-btn:disabled{opacity:.45}
+        .composer-modern .mic-btn{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+        .composer-modern .mic-btn:active{transform:scale(.96)}
+        .recording-strip{display:flex;align-items:center;gap:9px;flex:1;min-width:0;min-height:48px;padding:0 10px 0 14px;border:1px solid #5a4050;border-radius:28px;background:#201b29;color:#f5efff}
+        .recording-live-dot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:#ff5277;box-shadow:0 0 0 4px #ff527722;animation:recording-pulse 1s infinite}
+        .recording-strip strong{font-variant-numeric:tabular-nums;font-size:16px}
+        .recording-hint{flex:1;min-width:0;overflow:hidden;color:#b0a8c9;font-size:11px;line-height:1.3}
+        .recording-cancel,.recording-stop{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border:0;border-radius:50%;background:#343047;color:#d8ceff;font-size:20px}
+        .recording-stop{background:#7654f5;color:#fff}
+        .voice-ready-indicator{color:#b8aaff;font-size:11px}
+        .composer-modern .attachment-preview{margin-top:9px;border-color:#38344e;background:#211f30;color:#e9e4ff}
+        .composer-modern .voice-preview{position:static;display:flex;align-items:center;gap:8px;margin-top:9px;padding:8px;border-radius:16px;background:#222238}
+        .composer-modern .voice-preview audio{flex:1;min-width:0;max-width:65%}
+        .composer-modern .voice-preview button{min-height:34px;padding:0 11px;border:1px solid #51477b;border-radius:18px;background:#302b4b;color:#eeeaff;font-size:11px}
+        @keyframes recording-pulse{50%{box-shadow:0 0 0 7px #ff527711;opacity:.75}}
+        @media(max-width:700px){.composer-modern{padding:10px 12px calc(10px + env(safe-area-inset-bottom))!important}.composer-main-row{gap:9px}.composer-modern .attach-btn{width:42px;height:42px;flex-basis:42px}.composer-send-btn,.composer-modern .mic-btn{width:46px;height:46px;flex-basis:46px}.composer-input-wrap{min-height:46px;padding-left:13px}.composer-modern .composer-textarea{min-height:42px;font-size:14px}.recording-strip{min-height:46px;gap:7px;padding-left:11px}.recording-hint{font-size:10px}}
         .message-edit-inline{display:grid;gap:9px;width:min(100%,420px);margin:10px 0;padding:11px;border:1px solid #a99aff88;border-radius:13px;background:rgba(20,22,35,.07)}
         .message-edit-inline textarea{display:block;width:100%;min-height:88px;max-height:220px;resize:vertical;box-sizing:border-box;padding:11px 12px;border:1px solid #8c80bf;border-radius:10px;background:#fff;color:#242238;font:inherit;font-size:14px;line-height:1.45;outline:none}
         .message-edit-inline textarea:focus{border-color:#7967e8;box-shadow:0 0 0 3px #7967e822}
