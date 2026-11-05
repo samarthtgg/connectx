@@ -394,6 +394,8 @@ export default function ChatPreview() {
       .order("created_at", { ascending: false });
     if (requestError) throw requestError;
     setRequests((data ?? []) as FriendRequest[]);
+    setProfilesLoaded(false);
+    setProfilesLoadAttempted(false);
   }, [userId]);
 
   useEffect(() => {
