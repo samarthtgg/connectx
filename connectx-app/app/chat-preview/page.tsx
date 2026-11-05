@@ -352,6 +352,7 @@ export default function ChatPreview() {
   }, [attachment]);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -1313,6 +1314,39 @@ export default function ChatPreview() {
   },[userId]);
   useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);
 
+  const refreshApp = useCallback(async () => {
+    if (!userId || refreshing) return;
+    const startedAt = Date.now();
+    setRefreshing(true);
+    setError("");
+    setNotice("");
+    try {
+      await Promise.all([loadBase(userId), loadChatPreferences(), loadGroups(), loadStatuses()]);
+      if (selectedFriend) {
+        const requestId = ++messageLoadRequestRef.current;
+        await loadMessages(selectedFriend.id, requestId);
+      }
+      if (selectedGroup) {
+        const requestId = ++groupMessageLoadRequestRef.current;
+        const { data, error: groupMessagesError } = await supabase.from("chat_group_messages")
+          .select("id,group_id,sender_id,content,created_at,edited_at,deleted_for_everyone,reply_to_id,reply_to_content,reply_to_sender_id")
+          .eq("group_id", selectedGroup.id).order("created_at", { ascending: false }).limit(100);
+        if (groupMessagesError) throw groupMessagesError;
+        if (requestId === groupMessageLoadRequestRef.current) {
+          setGroupMessages(((data ?? []) as GroupMessage[]).reverse());
+          await Promise.all([loadGroupProfile(selectedGroup), loadGroupFeed(selectedGroup)]);
+        }
+      }
+      setNotice("ConnectX refreshed.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not refresh ConnectX. Please try again.");
+    } finally {
+      const remaining = 650 - (Date.now() - startedAt);
+      if (remaining > 0) await new Promise((resolve) => window.setTimeout(resolve, remaining));
+      setRefreshing(false);
+    }
+  }, [userId, refreshing, loadBase, loadChatPreferences, loadGroups, loadStatuses, selectedFriend, loadMessages, selectedGroup, loadGroupProfile, loadGroupFeed]);
+
   const activeViewedStatus = viewingStatuses[viewingStatusIndex] ?? null;
   useEffect(() => {
     if (!activeViewedStatus) { setStatusReactions([]); return; }
@@ -2038,7 +2072,7 @@ export default function ChatPreview() {
         {tab !== "Settings" && <div className="search-row"><div className="search-box"><span className="search-icon">⌕</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder={tab === "Friends" ? "Search exact username (e.g. @samarth)" : "Search friends"} />
-          <button type="button" className="refresh-btn" aria-label="Refresh" title="Refresh" onClick={() => loadBase(userId).catch((e) => setError(e.message))}><span>↻</span></button>
+          <button type="button" className={`refresh-btn ${refreshing ? "is-refreshing" : ""}`} aria-label={refreshing ? "Refreshing" : "Refresh"} title={refreshing ? "Refreshing…" : "Refresh"} disabled={refreshing || !userId} onClick={refreshApp}><span>↻</span></button>
         </div></div>}
 
         <div className="list-label">{tab.toUpperCase()} <span>{tab === "Friends" ? filteredProfiles.length : tab === "Messages" ? friends.length : ""}</span></div>
@@ -2955,7 +2989,10 @@ export default function ChatPreview() {
           .cx-list .search-box input{min-width:0;flex:1;color:#f4f0ff;font-size:13px}
           .cx-list .search-box input::placeholder{color:#928ba9;opacity:1}
           .cx-list .search-row .refresh-btn{width:38px;height:38px;min-width:38px;flex:0 0 38px;display:grid;place-items:center;margin:0;padding:0;border:0;border-radius:50%;background:#7955f5;color:#fff}
-          .cx-list .search-row .refresh-btn span{font-size:23px;line-height:1;margin:0}
+          .cx-list .search-row .refresh-btn span{font-size:23px;line-height:1;margin:0;display:block}
+          .cx-list .search-row .refresh-btn:disabled{opacity:1;cursor:default}
+          .cx-list .search-row .refresh-btn.is-refreshing span{animation:connectx-refresh-spin .7s linear infinite}
+          @keyframes connectx-refresh-spin{to{transform:rotate(360deg)}}
         }
       `}</style>
     </main>
