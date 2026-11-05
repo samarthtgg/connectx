@@ -351,11 +351,22 @@ export default function ChatPreview() {
     setProfilesLoadError("");
     setProfilesLoading(true);
     try {
-      const { data, error: peopleError } = await supabase.from("profiles")
-        .select("id,username,full_name,avatar_url,is_private")
-        .eq("is_private", false).neq("id", userId).order("full_name").limit(100);
-      if (peopleError) throw peopleError;
-      setProfiles((data ?? []) as Profile[]);
+      const acceptedFriendIds = Array.from(new Set(requests
+        .filter((request) => request.status === "accepted")
+        .map((request) => request.sender_id === userId ? request.receiver_id : request.sender_id)
+        .filter((id) => id !== userId)));
+      const [publicResult, acceptedResult] = await Promise.all([
+        supabase.from("profiles").select("id,username,full_name,avatar_url,is_private")
+          .eq("is_private", false).neq("id", userId).order("full_name").limit(100),
+        acceptedFriendIds.length
+          ? supabase.from("profiles").select("id,username,full_name,avatar_url,is_private").in("id", acceptedFriendIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (publicResult.error) throw publicResult.error;
+      if (acceptedResult.error) throw acceptedResult.error;
+      const merged = new Map<string, Profile>();
+      for (const profile of [...(publicResult.data ?? []), ...(acceptedResult.data ?? [])] as Profile[]) merged.set(profile.id, profile);
+      setProfiles(Array.from(merged.values()));
       setProfilesLoaded(true);
     } catch (reason) {
       setProfilesLoadError(reason instanceof Error ? reason.message : "Could not load people.");
@@ -363,7 +374,7 @@ export default function ChatPreview() {
     } finally {
       setProfilesLoading(false);
     }
-  }, [userId, profilesLoading, profilesLoaded, profilesLoadAttempted]);
+  }, [userId, requests, profilesLoading, profilesLoaded, profilesLoadAttempted]);
 
   useEffect(() => {
     if (tab !== "Friends") {
@@ -490,12 +501,13 @@ export default function ChatPreview() {
   }, [tab, search, userId]);
   const filteredProfiles = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return profiles.filter((p) => !p.is_private);
+    const visible = (profile: Profile) => !acceptedIds.has(profile.id) && !chatLockIds.includes("friend:" + profile.id);
+    if (!q) return profiles.filter((profile) => !profile.is_private && visible(profile));
     const exact = q.replace(/^@/, "");
-    const localMatch = profiles.find((p) => (p.username ?? "").toLowerCase() === exact);
+    const localMatch = profiles.find((profile) => (profile.username ?? "").toLowerCase() === exact);
     const result = usernameSearchProfile ?? localMatch;
-    return result ? [result] : [];
-  }, [profiles, search, usernameSearchProfile]);
+    return result && visible(result) ? [result] : [];
+  }, [profiles, search, usernameSearchProfile, acceptedIds, chatLockIds]);
 
 
   const loadGroups = useCallback(async () => {
@@ -940,6 +952,10 @@ export default function ChatPreview() {
   }, [userId, selectedFriend, loadMessages]);
 
   async function chooseFriend(friend: Profile) {
+    if (friend.is_private && friend.id !== userId && !acceptedIds.has(friend.id)) {
+      setNotice("This is a private profile. You can message them after they accept your friend request.");
+      return;
+    }
     if (selectionMode) {
       setSelectedChats((old) => old.includes(friend.id) ? old.filter((id) => id !== friend.id) : [...old, friend.id]);
       return;
@@ -1306,6 +1322,10 @@ export default function ChatPreview() {
   function stopVoiceRecording(){if(recorderRef.current?.state==="recording"){recorderRef.current.stop();setRecording(false);}}
   async function sendVoiceMessage(){
     if(!voiceBlob||!userId||!selectedFriend||busy)return;
+    if(selectedFriend.is_private && selectedFriend.id !== userId && !acceptedIds.has(selectedFriend.id)){
+      setError("This private profile only accepts messages from friends.");
+      return;
+    }
     setBusy(true);setError("");
     try{
       const ext=voiceBlob.type.includes("mp4")?"m4a":"webm";
@@ -1326,6 +1346,10 @@ export default function ChatPreview() {
     const file = attachment;
     const friend = selectedFriend;
     if (!friend || !userId || busy) return;
+    if (friend.is_private && friend.id !== userId && !acceptedIds.has(friend.id)) {
+      setError("This private profile only accepts messages from friends.");
+      return;
+    }
     if (!text && !file) { setError("Choose a photo or enter a message before sending."); return; }
 
     // Text messages appear immediately; the database insert is reconciled by id
@@ -1920,12 +1944,15 @@ export default function ChatPreview() {
                 (r.sender_id === userId && r.receiver_id === profile.id) ||
                 (r.sender_id === profile.id && r.receiver_id === userId)
               );
-              const label = relation?.status === "accepted" ? "Friends" :
-                relation?.status === "pending" ? (relation.sender_id === userId ? "Requested" : "Respond below") : "Add friend";
+              const pendingIncoming = relation?.status === "pending" && relation.receiver_id === userId;
+              const canMessage = !profile.is_private || acceptedIds.has(profile.id);
+              const label = relation?.status === "pending"
+                ? (relation.sender_id === userId ? "Requested" : "Respond below")
+                : canMessage ? "Message" : "Add friend";
               return <div className="person-row" key={profile.id}>
                 {profile.avatar_url ? <img className="avatar" src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}
-                <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}</small></span>
-                <button className="mini-btn" disabled={busy || !!relation} onClick={() => sendRequest(profile)}>{label}</button>
+                <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}{profile.is_private ? " · Private" : " · Public"}</small></span>
+                <button className="mini-btn" disabled={busy || !!relation} onClick={() => canMessage ? void chooseFriend(profile) : void sendRequest(profile)}>{label}</button>
               </div>;
             })}
             {usernameSearchLoading && <p className="empty">Searching username…</p>}
@@ -2237,7 +2264,7 @@ export default function ChatPreview() {
         .search-box { margin:0 17px 20px;padding:11px 12px;display:flex;gap:9px;border-radius:10px;background:#0c1424;color:#8b96ad; }
         .search-box input,.composer input,.composer textarea { width:100%;min-width:0;border:0;outline:0;background:transparent;color:#fff;font:inherit;font-size:12px; }\n        .composer .composer-textarea { flex:1;min-height:40px;max-height:35vh;resize:none;overflow-y:auto;padding:10px 12px;border-radius:20px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere; }
         .list-label { display:flex;justify-content:space-between;padding:0 21px 10px;color:#7e89a2;font-size:10px;font-weight:800;letter-spacing:1.5px; }
-        .cx-chats { flex:1;overflow:auto;padding:0 9px 16px; }
+        .cx-chats { flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:0 9px calc(24px + env(safe-area-inset-bottom)); }
         .chat-row,.person-row { width:100%;display:flex;align-items:center;gap:11px;padding:12px;border:0;border-radius:13px;background:transparent;color:inherit;text-align:left;margin-bottom:4px; }
         .chat-row { cursor:pointer; }.chat-row.active { background:#202a40; }
         .chat-row-wrap { border-bottom:1px solid var(--border,rgba(128,128,128,.16));padding:3px 0 7px; }.chat-row-wrap .chat-row { width:100%;margin-bottom:2px; }.chat-row-tools { display:flex;gap:8px;padding-left:54px;flex-wrap:wrap; }.text-btn { border:0;background:transparent;color:var(--muted,#8b91a5);font-size:11px;padding:4px 2px;cursor:pointer; }.text-btn:hover { color:var(--foreground,#fff); }
