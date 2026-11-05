@@ -378,14 +378,10 @@ export default function ChatPreview() {
 
   useEffect(() => {
     if (tab !== "Friends") {
-      setProfilesLoadAttempted(false);
-      setProfilesLoadError("");
-      return;
+      setUsernameSearchProfile(null);
+      setUsernameSearchLoading(false);
     }
-    if (userId && !profilesLoaded && !profilesLoading && !profilesLoadAttempted) {
-      void loadPublicProfiles().catch(() => {});
-    }
-  }, [tab, userId, profilesLoaded, profilesLoading, profilesLoadAttempted, loadPublicProfiles]);
+  }, [tab]);
   const refreshRequests = useCallback(async () => {
     if (!userId) return;
     const { data, error: requestError } = await supabase.from("friend_requests")
@@ -502,14 +498,11 @@ export default function ChatPreview() {
     return () => { active = false; window.clearTimeout(timer); };
   }, [tab, search, userId]);
   const filteredProfiles = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const visible = (profile: Profile) => !acceptedIds.has(profile.id) && !chatLockIds.includes("friend:" + profile.id);
-    if (!q) return profiles.filter((profile) => !profile.is_private && visible(profile));
-    const exact = q.replace(/^@/, "");
-    const localMatch = profiles.find((profile) => (profile.username ?? "").toLowerCase() === exact);
-    const result = usernameSearchProfile ?? localMatch;
-    return result && visible(result) ? [result] : [];
-  }, [profiles, search, usernameSearchProfile, acceptedIds, chatLockIds]);
+    const q = search.trim().toLowerCase().replace(/^@/, "");
+    if (!q || !usernameSearchProfile) return [];
+    const visible = !acceptedIds.has(usernameSearchProfile.id) && !chatLockIds.includes("friend:" + usernameSearchProfile.id);
+    return visible && (usernameSearchProfile.username ?? "").toLowerCase() === q ? [usernameSearchProfile] : [];
+  }, [search, usernameSearchProfile, acceptedIds, chatLockIds]);
 
 
   const loadGroups = useCallback(async () => {
@@ -1603,14 +1596,26 @@ export default function ChatPreview() {
       ],
     });
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    const receivedStream = new MediaStream();
     pc.ontrack = (event) => {
       const incoming = event.streams[0];
-      if (incoming) setRemoteStream(incoming);
+      if (incoming) {
+        setRemoteStream(incoming);
+        return;
+      }
+      if (!receivedStream.getTracks().some((track) => track.id === event.track.id)) receivedStream.addTrack(event.track);
+      setRemoteStream(new MediaStream(receivedStream.getTracks()));
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") setCallStatus("Connected");
-      if (pc.connectionState === "failed") setCallStatus("Connection failed. Try another network.");
-      if (pc.connectionState === "disconnected") setCallStatus("Connection interrupted…");
+      if (pc.connectionState === "failed") setCallStatus("Connection failed. A TURN relay may be required on this network.");
+      if (pc.connectionState === "disconnected") setCallStatus("Connection interrupted. Trying to reconnect…");
+      if (pc.connectionState === "closed") setCallStatus("Call ended");
+    };
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "checking") setCallStatus("Connecting devices…");
+      if (pc.iceConnectionState === "failed") setCallStatus("Could not establish a media route. This network may require TURN.");
+      if (pc.iceConnectionState === "disconnected") setCallStatus("Network interrupted. Reconnecting…");
     };
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
@@ -1945,7 +1950,7 @@ export default function ChatPreview() {
             {groups.map((group) => <button type="button" className="group-row" key={group.id} onContextMenu={(e) => { e.preventDefault(); toggleChatLock("group:" + group.id); }} onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span></button>)}
             {groups.length === 0 && <p className="group-empty">No groups yet. Create one and invite your friends.</p>}
             {showCreateGroup && <div className="status-modal-backdrop" onClick={() => setShowCreateGroup(false)}><form className="status-compose" onSubmit={createGroup} onClick={(e) => e.stopPropagation()}><div className="status-compose-head"><strong>Create a group</strong><button type="button" onClick={() => setShowCreateGroup(false)}>×</button></div><label className="profile-field">Group name<input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} maxLength={60} required placeholder="e.g. Project team" /></label><label className="profile-field">Description<input value={newGroupDescription} onChange={(e) => setNewGroupDescription(e.target.value)} maxLength={300} placeholder="Optional description" /></label><div className="section-caption">ADD FRIENDS</div>{friends.map((friend) => <label className="privacy-option" key={friend.id}><span><strong>{displayName(friend)}</strong></span><input type="checkbox" checked={selectedGroupMembers.includes(friend.id)} onChange={(e) => setSelectedGroupMembers((old) => e.target.checked ? [...old, friend.id] : old.filter((id) => id !== friend.id))} /></label>)}<button className="action-btn" disabled={busy || !newGroupName.trim()}>{busy ? "Creating…" : "Create group"}</button></form></div>}
-            <div className="section-caption">PEOPLE</div>
+            {search.trim() && <div className="section-caption">SEARCH RESULT</div>}
             {filteredProfiles.map((profile) => {
               const relation = requests.find((r) =>
                 (r.sender_id === userId && r.receiver_id === profile.id) ||
@@ -1962,9 +1967,7 @@ export default function ChatPreview() {
               </div>;
             })}
             {usernameSearchLoading && <p className="empty">Searching username…</p>}
-            {profilesLoading && !search.trim() && <p className="empty">Loading people…</p>}
-            {profilesLoadError && !search.trim() && <p className="empty" role="alert">{profilesLoadError} <button type="button" className="text-btn" onClick={() => { setProfilesLoadAttempted(false); setProfilesLoadError(""); }}>Retry</button></p>}
-            {filteredProfiles.length === 0 && !usernameSearchLoading && !profilesLoading && (search.trim() || !profilesLoadError) && <p className="empty">{search.trim() ? "No profile found for this exact username." : "No public profiles found."}</p>}
+            {search.trim() && filteredProfiles.length === 0 && !usernameSearchLoading && <p className="empty">No account found for this username, or this account is already in your friends list.</p>}
             <div className="section-caption request-caption">INCOMING REQUESTS · {incoming.length}</div>
             {incoming.map((request) => {
               const sender = profiles.find((p) => p.id === request.sender_id);
