@@ -2675,18 +2675,18 @@ export default function ChatPreview() {
           .chat-row::after { content:"›";display:grid;place-items:center;.flex:0 0 32px;width:32px;height:32px;border-radius:50%;background:#f0edff;color:#654bc0;font-size:24px;font-weight:300; }
           .profile-row { flex-shrink:0;margin:8px 22px 96px;padding:13px 16px;border:1px solid #f0edff;border-radius:20px;background:#f7f6ff;box-shadow:0 5px 18px #3b287009;gap:13px; }
           .profile-avatar { width:52px;height:52px;object-fit:cover;font-size:16px; }.profile-row strong { color:#30245a;font-size:14px;font-weight:600; }.profile-row small { color:#81799f;font-size:12px; }.online-dot { color:#46bd9b;font-size:14px; }
-          .mobile-nav.raised-nav { position:fixed;z-index:10;left:30px;right:30px;bottom:calc(9px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;gap:0;padding:8px 6px 6px;border-radius:34px;background:#191824;border:1px solid #302d42;box-shadow:0 8px 24px #08071155;isolation:isolate;min-height:88px; }
-          .raised-nav .nav-item { position:relative;z-index:1;min-width:0;height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0 2px;border:0;border-radius:24px;background:transparent;color:#9992b5;font-size:clamp(11px,3.2vw,14px);font-weight:500;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;overflow:visible; }
-          .raised-nav .nav-icon { width:40px;height:40px;display:grid;place-items:center;position:relative;border-radius:50%;background:transparent;color:inherit;transition:width 180ms ease,height 180ms ease,margin 180ms ease,background 180ms ease,box-shadow 180ms ease; }
-          .raised-nav .nav-icon svg { width:31px;height:31px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round; }
+          .mobile-nav.raised-nav { position:fixed;z-index:10;left:34px;right:34px;bottom:calc(9px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;gap:0;padding:6px 5px 5px;border-radius:30px;background:#191824;border:1px solid #302d42;box-shadow:0 7px 20px #08071150;isolation:isolate;min-height:78px; }
+          .raised-nav .nav-item { position:relative;z-index:1;min-width:0;height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 2px;border:0;border-radius:22px;background:transparent;color:#9992b5;font-size:clamp(10px,3vw,13px);font-weight:500;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;overflow:visible; }
+          .raised-nav .nav-icon { width:36px;height:36px;display:grid;place-items:center;position:relative;border-radius:50%;background:transparent;color:inherit;transition:width 180ms ease,height 180ms ease,margin 180ms ease,background 180ms ease,box-shadow 180ms ease; }
+          .raised-nav .nav-icon svg { width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round; }
           .raised-nav .nav-icon .status-dot { fill:currentColor;stroke:none; }
           .raised-nav .nav-label { display:block;white-space:nowrap;line-height:1.15; }
           .raised-nav .nav-item.active { color:#c9baff;background:transparent; }
-          .raised-nav .nav-item.active .nav-icon { width:58px;height:58px;margin-top:-25px;margin-bottom:0;background:#7955f5;color:#fff;border:5px solid #11101a;box-shadow:0 5px 0 #0e0d17,0 0 0 1px #3e365d; }
-          .raised-nav .nav-item.active .nav-icon svg { width:32px;height:32px; }
-          .raised-nav .nav-item.active .nav-label { color:#c9baff;font-size:clamp(11px,3.2vw,14px); }
-          .raised-nav .nav-badge { position:absolute;top:3px;left:calc(50% + 7px);min-width:23px;height:23px;padding:0 6px;display:grid;place-items:center;border-radius:999px;background:#fa526d;color:#fff;font-size:11px;font-weight:700;line-height:1;box-shadow:0 2px 8px #0003; }
-          .raised-nav .nav-item:active { transform:scale(.96); }
+          .raised-nav .nav-item.active .nav-icon { width:52px;height:52px;margin-top:-19px;margin-bottom:0;background:#7955f5;color:#fff;border:4px solid #11101a;box-shadow:0 4px 0 #0e0d17,0 0 0 1px #3e365d; }
+          .raised-nav .nav-item.active .nav-icon svg { width:29px;height:29px; }
+          .raised-nav .nav-item.active .nav-label { color:#c9baff;font-size:clamp(10px,3vw,13px); }
+          .raised-nav .nav-badge { position:absolute;top:4px;left:calc(50% + 6px);min-width:20px;height:20px;padding:0 5px;display:grid;place-items:center;border-radius:999px;background:#fa526d;color:#fff;font-size:10px;font-weight:700;line-height:1;box-shadow:0 2px 8px #0003; }
+          .raised-nav .nav-item:active { transform:scale(.97); }
           .cx-shell[data-theme="light"] .mobile-nav.raised-nav,.cx-shell[data-theme="dark"] .mobile-nav.raised-nav { background:#191824;border-color:#302d42; }
           .cx-shell[data-theme="dark"] .raised-nav .nav-item { color:#9992b5; }
           .cx-shell[data-theme="dark"] .raised-nav .nav-item.active { color:#c9baff; }
