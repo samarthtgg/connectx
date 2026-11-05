@@ -1944,7 +1944,6 @@ export default function ChatPreview() {
                 (r.sender_id === userId && r.receiver_id === profile.id) ||
                 (r.sender_id === profile.id && r.receiver_id === userId)
               );
-              const pendingIncoming = relation?.status === "pending" && relation.receiver_id === userId;
               const canMessage = !profile.is_private || acceptedIds.has(profile.id);
               const label = relation?.status === "pending"
                 ? (relation.sender_id === userId ? "Requested" : "Respond below")
