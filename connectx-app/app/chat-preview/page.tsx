@@ -564,22 +564,27 @@ export default function ChatPreview() {
     const rows=(pollsResult.data??[]) as Array<{id:string;created_by:string;question:string;is_closed:boolean;allow_multiple_answers:boolean;hide_voter_names:boolean;created_at:string}>;
     if(!rows.length){setGroupPolls([]);return;}
     const ids=rows.map(p=>p.id);
-    const optionsResult=await supabase.from("group_poll_options").select("id,poll_id,label").in("poll_id",ids);
-    if(optionsResult.error) throw optionsResult.error;
-    const [votesResult, ownVotesResult] = await Promise.all([
-      supabase.from("group_poll_votes").select("poll_id,option_id").in("poll_id", ids),
-      supabase.from("group_poll_votes").select("poll_id,option_id").in("poll_id", ids).eq("user_id", userId),
+    const [optionsResult, voteResultsResult] = await Promise.all([
+      supabase.from("group_poll_options").select("id,poll_id,label").in("poll_id",ids),
+      supabase.rpc("connectx_group_poll_results", { p_group_id: group.id, p_poll_ids: ids }),
     ]);
-    if (votesResult.error) throw votesResult.error;
-    if (ownVotesResult.error) throw ownVotesResult.error;
+    if(optionsResult.error) throw optionsResult.error;
+    if(voteResultsResult.error) throw voteResultsResult.error;
 
-    // Group totals need only poll/option IDs. Fetch voter identity only for
-    // the signed-in user so the normal client never downloads other voters' IDs.
+    // The database returns aggregate counts and this user's vote state only;
+    // voter identities never leave the protected votes table.
+    const voteResultRows = (voteResultsResult.data ?? []) as Array<{
+      poll_id: string;
+      option_id: string;
+      vote_count: number | string;
+      voted_by_me: boolean;
+    }>;
     const voteCounts = new Map<string, number>();
-    for (const vote of votesResult.data ?? []) {
-      voteCounts.set(vote.option_id, (voteCounts.get(vote.option_id) ?? 0) + 1);
+    const ownVoteKeys = new Set<string>();
+    for (const vote of voteResultRows) {
+      voteCounts.set(vote.option_id, Number(vote.vote_count));
+      if (vote.voted_by_me) ownVoteKeys.add(`${vote.poll_id}:${vote.option_id}`);
     }
-    const ownVoteKeys = new Set((ownVotesResult.data ?? []).map(vote => `${vote.poll_id}:${vote.option_id}`));
     const optionsByPoll = new Map<string, NonNullable<typeof optionsResult.data>>();
     for (const option of optionsResult.data ?? []) {
       const pollOptions = optionsByPoll.get(option.poll_id) ?? [];
