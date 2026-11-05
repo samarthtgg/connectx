@@ -2035,9 +2035,11 @@ export default function ChatPreview() {
           <div className="list-head-actions"><button type="button" className="intelligence-launcher" aria-label="Open ConnectX Intelligence" onClick={() => setIntelligenceOpen(true)}><span className="intelligence-orb">✦</span><span className="intelligence-launcher-label">AI</span></button><button className="icon-btn header-profile" aria-label="Open settings" onClick={() => { setTab("Settings"); setShowMobileChat(false); }}>{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(myProfile?.full_name || myProfile?.username || "U")}</button></div>
         </header>
 
-        {tab !== "Settings" && <div className="search-row"><div className="search-box"><span>⌕</span>
+        {tab !== "Settings" && <div className="search-row"><div className="search-box"><span className="search-icon">⌕</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === "Friends" ? "Search exact username (e.g. @samarth)" : "Search friends"} /></div><button className="refresh-btn" onClick={() => loadBase(userId).catch((e) => setError(e.message))}><span>↻</span> Refresh</button></div>}
+            placeholder={tab === "Friends" ? "Search exact username (e.g. @samarth)" : "Search friends"} />
+          <button type="button" className="refresh-btn" aria-label="Refresh" title="Refresh" onClick={() => loadBase(userId).catch((e) => setError(e.message))}><span>↻</span></button>
+        </div></div>}
 
         <div className="list-label">{tab.toUpperCase()} <span>{tab === "Friends" ? filteredProfiles.length : tab === "Messages" ? friends.length : ""}</span></div>
 
@@ -2930,24 +2932,25 @@ export default function ChatPreview() {
         .message-edit-inline button{min-height:36px;padding:7px 14px;border:1px solid #8b7be2;border-radius:9px;background:#7868eb;color:#fff;font-size:12px;font-weight:700}
         .message-edit-inline button:last-child{border-color:#a6a1b8;background:transparent;color:inherit}
         .message-edit-inline button:disabled{opacity:.45;cursor:not-allowed}
-        /* Refined mobile home header and search controls */
+        /* Clean header and integrated refresh control */
         @media(max-width:700px){
-          .cx-list:not(.hide-mobile) .list-head{min-height:94px;padding:16px 18px 13px;gap:12px;background:#171722}
-          .cx-list .cx-brand{font-size:25px;line-height:1.08;font-weight:750;letter-spacing:-.9px;color:#f1eeff}
-          .cx-list .cx-brand span{font-size:27px;margin-right:5px;color:#8062ed}
-          .cx-list .list-head p{margin-top:6px;font-size:13px;line-height:1.25;color:#aaa4bd}
-          .cx-list .list-head-actions{gap:10px;flex-shrink:0}
-          .cx-list .intelligence-launcher{height:46px;gap:7px;padding:4px 10px 4px 4px;border-radius:25px}
-          .cx-list .intelligence-orb{width:36px;height:36px;font-size:22px}
-          .cx-list .intelligence-launcher-label{font-size:12px}
-          .cx-list .header-profile{width:50px;height:50px;flex:0 0 50px;border:0;border-radius:50%;background:#8068e8;color:#fff;font-size:20px;box-shadow:0 0 0 6px #eeeaff}
-          .cx-list .search-row{padding:0 18px;gap:10px;margin-top:0}
-          .cx-list .search-row .search-box{height:50px;min-width:0;flex:1;margin:0;padding:0 15px;gap:10px;align-items:center;border-radius:27px;background:#20202b;color:#e8e3ff}
-          .cx-list .search-box>span{font-size:21px;line-height:1;color:#e3ddff}
-          .cx-list .search-box input{min-width:0;color:#f4f0ff;font-size:14px}
-          .cx-list .search-box input::placeholder{color:#918ba8;opacity:1}
-          .cx-list .refresh-btn{height:50px;min-width:112px;margin:0;padding:0 17px;border-radius:27px;background:linear-gradient(135deg,#8068e8,#7654d7);font-size:13px;font-weight:700}
-          .cx-list .refresh-btn span{font-size:20px;margin-right:7px}
+          .cx-list:not(.hide-mobile) .list-head{min-height:100px;padding:17px 18px 13px;gap:10px;background:#171722}
+          .cx-list .cx-brand{font-size:27px;line-height:1.08;font-weight:700;letter-spacing:-1px;color:#f2efff}
+          .cx-list .cx-brand span{font-size:32px;vertical-align:-2px;margin-right:8px;color:#8563f5}
+          .cx-list .list-head p{margin-top:5px;font-size:14px;line-height:1.2;color:#aaa4bd}
+          .cx-list .list-head-actions{gap:13px;flex-shrink:0}
+          .cx-list .intelligence-launcher{height:54px;gap:10px;padding:5px 15px 5px 5px;border-radius:30px;background:#242337;border-color:#39344f;box-shadow:none}
+          .cx-list .intelligence-orb{width:42px;height:42px;font-size:23px;background:#31cbb8;color:#172a37;box-shadow:none}
+          .cx-list .intelligence-launcher-label{font-size:15px;font-weight:600}
+          .cx-list .header-profile{position:relative;width:58px;height:58px;flex:0 0 58px;border:3px solid #a68cff;border-radius:50%;background:#8068e8;color:#fff;font-size:22px;box-shadow:0 0 0 3px #171722}
+          .cx-list .header-profile::after{content:"";position:absolute;width:13px;height:13px;right:-1px;bottom:0;border:3px solid #171722;border-radius:50%;background:#32d6a1}
+          .cx-list .search-row{padding:0 18px;gap:0;margin-top:0}
+          .cx-list .search-row .search-box{height:58px;min-width:0;width:100%;flex:1;margin:0;padding:6px 7px 6px 18px;gap:12px;align-items:center;border:1px solid #37334e;border-radius:32px;background:#202033;color:#a49bbf;box-shadow:inset 0 1px 2px #ffffff08}
+          .cx-list .search-box .search-icon{font-size:28px;line-height:1;color:#a49bbf}
+          .cx-list .search-box input{min-width:0;flex:1;color:#f4f0ff;font-size:15px}
+          .cx-list .search-box input::placeholder{color:#928ba9;opacity:1}
+          .cx-list .search-row .refresh-btn{width:48px;height:48px;min-width:48px;flex:0 0 48px;display:grid;place-items:center;margin:0;padding:0;border:0;border-radius:50%;background:#7955f5;color:#fff}
+          .cx-list .search-row .refresh-btn span{font-size:29px;line-height:1;margin:0}
         }
       `}</style>
     </main>
