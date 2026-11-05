@@ -56,7 +56,7 @@ type DirectMessage = {
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null };
-type ChatGroup = { id: string; name: string; description: string | null; created_by: string; created_at: string };
+type ChatGroup = { id: string; name: string; description: string | null; avatar_url: string | null; created_by: string; created_at: string; my_role?: string };
 type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean; reply_to_id?: string | null; reply_to_content?: string | null; reply_to_sender_id?: string | null };
 
 const displayName = (profile: Profile) =>
@@ -254,6 +254,9 @@ export default function ChatPreview() {
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [groupDraft, setGroupDraft] = useState("");
   const [groupProfileOpen, setGroupProfileOpen] = useState(false);
+  const [groupAvatarBusy, setGroupAvatarBusy] = useState(false);
+  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+  const [showAllGroups, setShowAllGroups] = useState(false);
   const [showGroupTools, setShowGroupTools] = useState(false);
   const [groupChatMenuOpen, setGroupChatMenuOpen] = useState(false);
   const [groupSelectionMode, setGroupSelectionMode] = useState(false);
@@ -562,13 +565,14 @@ export default function ChatPreview() {
 
   const loadGroups = useCallback(async () => {
     if (!userId) return;
-    const { data: memberships, error: membershipError } = await supabase.from("chat_group_members").select("group_id").eq("user_id", userId);
+    const { data: memberships, error: membershipError } = await supabase.from("chat_group_members").select("group_id,role").eq("user_id", userId);
     if (membershipError) throw membershipError;
-    const ids = (memberships ?? []).map((row) => row.group_id as string);
+    const roleByGroup = new Map((memberships ?? []).map((row) => [row.group_id as string, row.role as string]));
+    const ids = Array.from(roleByGroup.keys());
     if (!ids.length) { setGroups([]); return; }
-    const { data, error } = await supabase.from("chat_groups").select("id,name,description,created_by,created_at").in("id", ids).order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("chat_groups").select("id,name,description,avatar_url,created_by,created_at").in("id", ids).order("created_at", { ascending: false });
     if (error) throw error;
-    setGroups((data ?? []) as ChatGroup[]);
+    setGroups((data ?? []).map((group) => ({ ...group, my_role: roleByGroup.get(group.id) })) as ChatGroup[]);
   }, [userId]);
   useEffect(() => { if (userId) void loadGroups().catch((e) => setError(e.message)); }, [userId, loadGroups]);
 
@@ -601,6 +605,35 @@ export default function ChatPreview() {
     setGroupMembers((membersResult.data??[]) as Array<{user_id:string;role:string;joined_at:string}>);
     setGroupEditName(group.name); setGroupEditDescription(group.description??"");
     await loadGroupFeed(group);
+  }
+
+  async function uploadGroupAvatar(file: File) {
+    if (!selectedGroup || !userId || groupAvatarBusy) return;
+    if (!groupMembers.some(member => member.user_id === userId && member.role === "admin")) {
+      setError("Only group admins can change the group photo."); return;
+    }
+    if (!file.type.startsWith("image/")) { setError("Choose an image file for the group photo."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError("Group photos must be 5 MB or smaller."); return; }
+    setGroupAvatarBusy(true); setError(""); setNotice("");
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+      const path = userId + "/groups/" + selectedGroup.id + "/" + crypto.randomUUID() + "." + extension;
+      const { error: uploadError } = await supabase.storage.from("connectx-avatars").upload(path, file, { contentType: file.type, cacheControl: "3600", upsert: false });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = supabase.storage.from("connectx-avatars").getPublicUrl(path);
+      const { data, error } = await supabase.from("chat_groups").update({ avatar_url: publicData.publicUrl, updated_at: new Date().toISOString() })
+        .eq("id", selectedGroup.id).select("id,name,description,avatar_url,created_by,created_at").single();
+      if (error) throw error;
+      setSelectedGroup({ ...data, my_role: "admin" } as ChatGroup);
+      setGroups(current => current.map(group => group.id === selectedGroup.id ? { ...group, avatar_url: publicData.publicUrl } : group));
+      setNotice("Group photo updated.");
+      await loadGroups();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not update the group photo.");
+    } finally {
+      setGroupAvatarBusy(false);
+      if (groupAvatarInputRef.current) groupAvatarInputRef.current.value = "";
+    }
   }
 
   async function loadGroupFeed(group: ChatGroup) {
@@ -2217,15 +2250,18 @@ export default function ChatPreview() {
               return group ? <div className="chat-row-wrap" key={id}><button type="button" className="group-row" onClick={() => void openGroup(group)}><span className="group-avatar">♧</span><span className="chat-info"><strong>{group.name}</strong><small>Locked group</small></span></button><button type="button" className="text-btn" onClick={() => toggleChatLock(id)}>Unlock</button></div> : null;
             })}
             {showLockedChats && chatLockUnlocked && chatLockIds.length === 0 && <p className="empty">No locked chats yet.</p>}
-            {groups.length > 0 && <>
-              <div className="groups-heading"><strong>GROUPS</strong><span>{groups.length}</span></div>
-              {groups.filter(group => !chatLockIds.includes("group:" + group.id)).map((group) => (
-                <button type="button" className="group-row" key={group.id} onClick={() => void openGroup(group)}>
-                  <span className="group-avatar">♧</span>
-                  <span className="chat-info"><strong>{group.name}</strong><small>{group.description || "Group conversation"}</small></span>
-                </button>
-              ))}
-            </>}
+            <section className="group-tiles-section" aria-label="Your groups">
+              <div className="group-tiles-heading"><strong>GROUPS <span>· {groups.length}</span></strong><button type="button" onClick={() => setShowAllGroups(value => !value)}>{showAllGroups ? "Show less" : "See all"}</button></div>
+              <div className="group-tiles-row">
+                <button type="button" className="group-tile group-tile-new" onClick={() => setShowCreateGroup(true)} aria-label="Create a new group"><span className="group-tile-avatar"><span>＋</span></span><strong>New</strong></button>
+                {groups.filter(group => !chatLockIds.includes("group:" + group.id)).slice(0, showAllGroups ? groups.length : 7).map(group => (
+                  <button type="button" className="group-tile" key={group.id} onClick={() => void openGroup(group)} onContextMenu={event => { event.preventDefault(); toggleChatLock("group:" + group.id); }}>
+                    <span className="group-tile-avatar">{group.avatar_url ? <img src={group.avatar_url} alt="" /> : <span>{initials(group.name)}</span>}</span><strong>{group.name}</strong>
+                  </button>
+                ))}
+              </div>
+              {groups.length === 0 && <p className="group-empty">Create a group and bring your people together.</p>}
+            </section>
             <div className="section-caption">CHATS <button type="button" className="text-btn" onClick={() => setShowArchivedChats((value) => !value)}>{showArchivedChats ? "Back to chats" : "Archive (" + archivedFriends.length + ")"}</button></div>
             {!showArchivedChats && myProfile && <button type="button" className={"chat-row self-chat-row " + (selectedFriend?.id === userId ? "active" : "")} onClick={() => { setChatActionMenuId(null); chooseFriend(myProfile); }}>
               {myProfile.avatar_url ? <img className="avatar chat-row-photo" src={myProfile.avatar_url} alt="Your profile photo" /> : <span className="avatar">{initials(displayName(myProfile))}</span>}
@@ -2366,7 +2402,14 @@ export default function ChatPreview() {
       {groupProfileOpen && selectedGroup && <div className="profile-modal-backdrop group-profile-backdrop" onClick={() => setGroupProfileOpen(false)}>
         <section className="friend-profile-card group-profile-card" role="dialog" aria-modal="true" aria-label="Group info" onClick={event => event.stopPropagation()}>
           <header className="friend-profile-topbar"><button type="button" onClick={() => setGroupProfileOpen(false)} aria-label="Back">‹</button><strong>Group info</strong><span className="group-info-header-spacer" /></header>
-          <div className="group-profile-hero"><div className="group-profile-avatar">♧</div><h2>{selectedGroup.name}</h2><p>{groupMembers.length} participants</p><small>Created {new Date(selectedGroup.created_at).toLocaleDateString()}</small></div>
+          <div className="group-profile-hero">
+             <div className="group-profile-avatar">{selectedGroup.avatar_url ? <img src={selectedGroup.avatar_url} alt={selectedGroup.name + " group photo"} /> : <span>{initials(selectedGroup.name)}</span>}</div>
+             <h2>{selectedGroup.name}</h2><p>{groupMembers.length} participants</p><small>Created {new Date(selectedGroup.created_at).toLocaleDateString()}</small>
+             {groupMembers.some(member => member.user_id === userId && member.role === "admin") && <>
+               <input ref={groupAvatarInputRef} className="group-avatar-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadGroupAvatar(file); }} />
+               <button type="button" className="group-photo-change-btn" disabled={groupAvatarBusy} onClick={() => groupAvatarInputRef.current?.click()}>{groupAvatarBusy ? "Uploading photo…" : "Change group photo"}</button>
+             </>}
+           </div>
           <div className="group-profile-section"><small>ABOUT</small><p>{selectedGroup.description?.trim() || "No description yet. Group admins can add one in Group settings."}</p></div>
           {groupMembers.some(m=>m.user_id===userId&&m.role==="admin") && <div className="group-profile-section"><small>GROUP SETTINGS</small><form className="group-profile-form" onSubmit={saveGroupDetails}><input value={groupEditName} onChange={e=>setGroupEditName(e.target.value)} placeholder="Group name" maxLength={80} required/><textarea value={groupEditDescription} onChange={e=>setGroupEditDescription(e.target.value)} placeholder="Description" maxLength={500} rows={3}/><button className="action-btn" type="submit">Save info</button></form></div>}
           <div className="group-profile-section"><div className="group-participant-heading"><small>PARTICIPANTS · {groupMembers.length}</small><span>{groupMembers.filter(m=>m.role==="admin").length} admins</span></div>
@@ -2556,7 +2599,19 @@ export default function ChatPreview() {
         .call-overlay { position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:18px;background:#050914dd;backdrop-filter:blur(8px); }.incoming-card,.active-call-card { width:min(100%,520px);border:1px solid #3a4562;border-radius:22px;background:#151f33;color:#f5f6fc;box-shadow:0 24px 80px #0009;overflow:hidden; }.incoming-card { padding:34px 24px;text-align:center; }.call-avatar { width:82px;height:82px;margin:10px auto 20px;display:grid;place-items:center;border-radius:50%;background:#6257b5;color:white;font-size:36px; }.incoming-card h2 { margin:0;font-size:20px; }.incoming-card p { color:#9ca8c0;font-size:13px; }.incoming-actions,.call-controls { display:flex;justify-content:center;gap:12px;margin-top:26px; }.incoming-actions button,.call-controls button { padding:12px 18px;border:0;border-radius:12px;background:#303b53;color:#fff;font-weight:700; }.accept-call { background:#23875e!important; }.decline-call,.hangup { background:#b83c55!important; }.active-call-card { padding:18px; }.call-topline { display:flex;justify-content:space-between;gap:12px;align-items:center;padding:4px 4px 14px;font-size:13px; }.call-topline span { color:#9da9c0;font-size:11px; }.video-stage { position:relative;height:min(58vh,420px);min-height:230px;border-radius:15px;overflow:hidden;background:#070b14; }.remote-video { width:100%;height:100%;object-fit:cover; }.local-video { position:absolute;right:12px;bottom:12px;width:26%;max-height:35%;aspect-ratio:3/4;object-fit:cover;border:2px solid #fff;border-radius:12px;background:#202a40; }.video-placeholder { position:absolute;inset:0;display:grid;place-items:center;color:#aab5ca;font-size:12px;pointer-events:none; }.audio-stage { min-height:260px;display:grid;align-content:center;text-align:center;color:#aab5ca; }.audio-stage .call-avatar { margin-bottom:4px; }.audio-stage p { font-size:12px; }.call-controls { margin:18px 0 4px;flex-wrap:wrap; }.call-controls .control-on { background:#6557c7; }
         .read-ticks { color:#54b9ff;font-weight:900;letter-spacing:-3px;padding-right:3px; }.reaction-chip { margin:6px 4px 0 0;padding:4px 7px;border:1px solid #56617b;border-radius:12px;background:#27344d;color:white;font-size:11px; }.reaction-picker { display:flex;gap:4px;margin-top:7px;padding:5px;background:#101a2c;border:1px solid #45516d;border-radius:20px;width:max-content; }.reaction-picker button,.react-trigger { border:0;background:transparent;color:white;font-size:17px;cursor:pointer; }.react-trigger { display:block;margin-left:auto;font-size:13px;color:#b8c3d9; }.typing-indicator { align-self:flex-start;color:#aeb9d0;font-size:11px;display:flex;align-items:center;gap:4px; }.typing-indicator span { width:5px;height:5px;border-radius:50%;background:#a99aff;animation:typingPulse .8s infinite alternate; }.typing-indicator span:nth-child(2) { animation-delay:.2s; }.typing-indicator span:nth-child(3) { animation-delay:.4s; } @keyframes typingPulse { to { opacity:.25;transform:translateY(-3px); } }.bulk-actions { display:flex;align-items:center;gap:6px;padding:8px;position:sticky;top:0;background:#121a2b;z-index:2; }.bulk-actions strong { flex:1;font-size:11px; }.bulk-actions button { border:1px solid #46516b;border-radius:8px;padding:6px;background:#202a40;color:#fff;font-size:10px; }.chat-row.chat-selected { outline:2px solid #8e80ff;background:#28264a; }
         .back-btn { display:none;border:0;background:transparent;color:#c9bfff;font-size:28px; }.empty-state { margin:auto;color:#8490a9;text-align:center;padding:20px; }
-        .groups-heading { display:flex;align-items:center;justify-content:space-between;padding:16px 12px 8px;color:#817b91;font-size:11px;font-weight:700;letter-spacing:1px; }.group-row { display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;margin-bottom:7px;border:1px solid #eeeaff;border-radius:13px;background:#faf9ff;color:#30245a;text-align:left; }.group-avatar { display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:#eeeaff;color:#7659dc;font-size:20px; }.group-empty { padding:4px 12px 12px;color:#918aa4;font-size:11px; }
+         .groups-heading { display:flex;align-items:center;justify-content:space-between;padding:16px 12px 8px;color:#817b91;font-size:11px;font-weight:700;letter-spacing:1px; }.group-row { display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;margin-bottom:7px;border:1px solid #eeeaff;border-radius:13px;background:#faf9ff;color:#30245a;text-align:left; }.group-avatar { display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:#eeeaff;color:#7659dc;font-size:20px; }.group-empty { padding:4px 12px 12px;color:#918aa4;font-size:11px; }
+         .group-tiles-section{margin:12px 0 18px;padding:17px 14px 15px;border:1px solid #2b293d;border-radius:22px;background:linear-gradient(145deg,#171622,#11111b);overflow:hidden}
+         .group-tiles-heading{display:flex;align-items:center;justify-content:space-between;margin:0 2px 14px;color:#aaa2c8;font-size:12px;letter-spacing:1.5px;font-weight:800}
+         .group-tiles-heading>strong span{color:#8e86a9}.group-tiles-heading>button{border:0;background:transparent;color:#b6a6ff;font:inherit;font-size:13px;letter-spacing:0;cursor:pointer}
+         .group-tiles-row{display:flex;gap:13px;overflow-x:auto;padding:2px 1px 7px;scrollbar-width:none;overscroll-behavior-x:contain;touch-action:pan-x}.group-tiles-row::-webkit-scrollbar{display:none}
+         .group-tile{flex:0 0 82px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;padding:0;border:0;background:transparent;color:#e9e4ff;cursor:pointer}
+         .group-tile-avatar{width:76px;height:76px;display:grid;place-items:center;overflow:hidden;border-radius:23px;background:#7154ed;color:#fff;font-size:24px;font-weight:700;letter-spacing:.5px}
+         .group-tile:nth-of-type(3n+1) .group-tile-avatar{background:#129b8b}.group-tile:nth-of-type(3n+2) .group-tile-avatar{background:#d64e83}
+         .group-tile-avatar img{width:100%;height:100%;object-fit:cover}.group-tile>strong{width:100%;overflow:hidden;color:#c9c1e5;font-size:12px;font-weight:600;text-align:center;text-overflow:ellipsis;white-space:nowrap}
+         .group-tile-new .group-tile-avatar{border:2px dashed #7864c8;background:transparent;color:#b9a8ff;font-size:34px;font-weight:400}
+         .group-tiles-section .group-empty{padding:0 2px 2px;margin:3px 0 0}
+         .group-profile-avatar img{width:100%;height:100%;border-radius:inherit;object-fit:cover}.group-profile-avatar span{display:grid;place-items:center;width:100%;height:100%}
+         .group-avatar-file-input{display:none}.group-photo-change-btn{margin-top:8px;padding:8px 13px;border:1px solid #554a86;border-radius:20px;background:#28233e;color:#c9baff;font-size:11px;font-weight:700;cursor:pointer}.group-photo-change-btn:disabled{opacity:.6;cursor:wait}
         .section-caption { padding:14px 12px 7px;color:#77839c;font-size:9px;font-weight:800;letter-spacing:1.4px; }.request-caption { border-top:1px solid #263149;margin-top:12px; }
         .mini-btn { padding:8px 10px;font-size:10px;white-space:nowrap; }.muted-btn,.action-btn.secondary { background:#303b53;color:#d1d8e8; }
         .request-row { display:flex;align-items:center;gap:7px;padding:10px 12px;color:#dce2f2;font-size:11px; }.request-row span { flex:1; }.settings-panel.profile-editor{position:relative;isolation:isolate;gap:14px;padding:18px 16px 28px;background:linear-gradient(180deg,#19182b 0%,#12121d 48%,#11111a 100%);border:1px solid #29263e;border-radius:24px;box-shadow:0 18px 48px #0005;overflow:hidden}
