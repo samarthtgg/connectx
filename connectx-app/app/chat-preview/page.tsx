@@ -149,6 +149,8 @@ export default function ChatPreview() {
   const [profilesLoadAttempted, setProfilesLoadAttempted] = useState(false);
   const [profilesLoadError, setProfilesLoadError] = useState("");
   const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [requestSendingProfileId, setRequestSendingProfileId] = useState<string | null>(null);
+  const [pendingRequestProfileIds, setPendingRequestProfileIds] = useState<string[]>([]);
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -1155,7 +1157,8 @@ export default function ChatPreview() {
   }
 
   async function sendRequest(profile: Profile) {
-    if (!userId) return;
+    if (!userId || requestSendingProfileId === profile.id || pendingRequestProfileIds.includes(profile.id)) return;
+    setRequestSendingProfileId(profile.id);
     setBusy(true); setError(""); setNotice("");
     try {
       const existing = requests.find((r) =>
@@ -1172,12 +1175,14 @@ export default function ChatPreview() {
         sender_id: userId, receiver_id: profile.id, status: "pending",
       });
       if (insertError) throw insertError;
+      setPendingRequestProfileIds((current) => current.includes(profile.id) ? current : [...current, profile.id]);
       await refreshRequests();
       setNotice(`Friend request sent to ${displayName(profile)}.`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not send friend request.");
     } finally {
       setBusy(false);
+      setRequestSendingProfileId((current) => current === profile.id ? null : current);
     }
   }
 
@@ -2517,7 +2522,19 @@ export default function ChatPreview() {
               {acceptedIds.has(friendProfile.id) ? <>
                 <button type="button" onClick={() => { setFriendProfile(null); void startCall("audio"); }}><span>☎</span>Audio</button>
                 <button type="button" onClick={() => { setFriendProfile(null); void startCall("video"); }}><span>▣</span>Video</button>
-              </> : <button type="button" disabled={busy} onClick={() => void sendRequest(friendProfile)}><span>＋</span>Add friend</button>}
+              </> : (() => {
+                const relation = requests.find((r) =>
+                  (r.sender_id === userId && r.receiver_id === friendProfile.id) ||
+                  (r.sender_id === friendProfile.id && r.receiver_id === userId)
+                );
+                const outgoingPending = relation?.status === "pending" && relation.sender_id === userId;
+                const incomingPending = relation?.status === "pending" && relation.receiver_id === userId;
+                const isSending = requestSendingProfileId === friendProfile.id;
+                const isPending = outgoingPending || pendingRequestProfileIds.includes(friendProfile.id);
+                if (isPending) return <button type="button" className="friend-request-pending" disabled><span className="request-pending-icon" aria-hidden="true">✓</span>Pending<i className="request-pending-ripple" aria-hidden="true" /></button>;
+                if (incomingPending) return <button type="button" className="friend-request-pending" disabled>Request received</button>;
+                return <button type="button" disabled={isSending} onClick={() => void sendRequest(friendProfile)}><span className={isSending ? "request-send-spinner" : ""}>{isSending ? "Sending…" : "＋ Add friend"}</span></button>;
+              })()}
             </div>
           </div>
           <div className="friend-profile-section">
@@ -2629,6 +2646,8 @@ export default function ChatPreview() {
 
       <style jsx>{`
         * { box-sizing:border-box; }
+        .friend-profile-actions .friend-request-pending{position:relative;overflow:hidden;border:1px solid #4b9d83;background:#15392f;color:#8ff0c5;animation:request-pending-glow 1.8s ease-in-out infinite}
+        .friend-profile-actions .friend-request-pending:disabled{opacity:1;cursor:default}
         .request-pending-btn{position:relative;display:inline-flex;align-items:center;gap:6px;overflow:hidden;border:1px solid #4b9d83!important;background:#15392f!important;color:#8ff0c5!important;cursor:default!important;animation:request-pending-glow 1.8s ease-in-out infinite}
         .request-pending-icon{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#27b77e;color:#08251b;font-size:11px;font-weight:900;animation:request-check-pop .35s cubic-bezier(.2,1.5,.5,1) both}
         .request-pending-ripple{position:absolute;inset:0;border-radius:inherit;pointer-events:none;animation:request-ripple 1.8s ease-out infinite}
