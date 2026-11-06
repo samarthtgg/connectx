@@ -1136,7 +1136,7 @@ export default function ChatPreview() {
 
   async function chooseFriend(friend: Profile) {
     if (friend.is_private && friend.id !== userId && !acceptedIds.has(friend.id)) {
-      setNotice("This is a private profile. You can message them after they accept your friend request.");
+      setNotice("This is a private profile. Send a friend request and wait for acceptance before messaging.");
       return;
     }
     if (selectionMode) {
@@ -1419,9 +1419,10 @@ export default function ChatPreview() {
 
   const loadStatuses=useCallback(async()=>{
     if(!userId)return;
-    const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false}).limit(100);
+    const visibleOwnerIds = [userId, ...Array.from(acceptedIds)];
+    const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").in("user_id",visibleOwnerIds).gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false}).limit(100);
     if(error)throw error; setStatuses((data??[]) as StatusUpdate[]);
-  },[userId]);
+  },[userId,acceptedIds]);
   useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);
 
   const refreshApp = useCallback(async () => {
@@ -2063,8 +2064,9 @@ export default function ChatPreview() {
 
   async function startCall(mode: "audio" | "video") {
     setCallFeedback("");
-    if (!selectedFriend) { setCallFeedback("Open a friend's chat before starting a call."); return; }
+    if (!selectedFriend) { setCallFeedback("Open a chat before starting a call."); return; }
     if (!userId) { setCallFeedback("Your session is not ready. Sign in again and retry."); return; }
+    if (!acceptedIds.has(selectedFriend.id)) { setCallFeedback("You can call only after both people accept the friend request."); return; }
     if (activeCall || incomingCall) { setCallFeedback("Another call is already active."); return; }
     setError(""); setNotice(""); setCallStatus("Requesting microphone and camera access…");
     let stream: MediaStream | null = null;
@@ -2292,14 +2294,18 @@ export default function ChatPreview() {
                 (r.sender_id === userId && r.receiver_id === profile.id) ||
                 (r.sender_id === profile.id && r.receiver_id === userId)
               );
-              const canMessage = profile.id === userId || !profile.is_private || acceptedIds.has(profile.id);
-              const label = relation?.status === "pending"
-                ? (relation.sender_id === userId ? "Requested" : "Respond below")
-                : profile.id === userId ? "Message yourself" : canMessage ? "Message" : "Add friend";
+              const isSelf = profile.id === userId;
+              const isFriend = acceptedIds.has(profile.id);
+              const canMessage = isSelf || !profile.is_private || isFriend;
+              const outgoingPending = relation?.status === "pending" && relation.sender_id === userId;
+              const incomingPending = relation?.status === "pending" && relation.receiver_id === userId;
               return <div className="person-row" key={profile.id}>
                 {profile.avatar_url ? <img className="avatar" src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}
-                <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}{profile.is_private ? " · Private" : " · Public"}</small></span>
-                <button className="mini-btn" disabled={busy || !!relation} onClick={() => canMessage ? void chooseFriend(profile) : void sendRequest(profile)}>{label}</button>
+                <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}{profile.is_private ? " · Private" : " · Public"}{isFriend ? " · Friend" : ""}</small></span>
+                {!isSelf && !isFriend && !relation && <button className="mini-btn muted-btn" disabled={busy} onClick={() => void sendRequest(profile)}>Add friend</button>}
+                {!isSelf && outgoingPending && <button className="mini-btn muted-btn" disabled>Requested</button>}
+                {!isSelf && incomingPending && <button className="mini-btn muted-btn" disabled>Request received</button>}
+                <button className="mini-btn" disabled={!canMessage} onClick={() => void chooseFriend(profile)}>{isSelf ? "Message yourself" : "Message"}</button>
               </div>;
             })}
             {usernameSearchLoading && <p className="empty">Searching username…</p>}
@@ -2507,9 +2513,11 @@ export default function ChatPreview() {
             {friendProfile.username && <p className="friend-profile-username">@{friendProfile.username}</p>}
             <small>{loadingFriendProfile ? "Loading profile…" : "ConnectX friend"}</small>
             <div className="friend-profile-actions">
-              <button type="button" onClick={() => setFriendProfile(null)}><span>▣</span>Message</button>
-              <button type="button" onClick={() => { setFriendProfile(null); void startCall("audio"); }}><span>☎</span>Audio</button>
-              <button type="button" onClick={() => { setFriendProfile(null); void startCall("video"); }}><span>▣</span>Video</button>
+              <button type="button" onClick={() => { setFriendProfile(null); void chooseFriend(friendProfile); }}><span>▣</span>Message</button>
+              {acceptedIds.has(friendProfile.id) ? <>
+                <button type="button" onClick={() => { setFriendProfile(null); void startCall("audio"); }}><span>☎</span>Audio</button>
+                <button type="button" onClick={() => { setFriendProfile(null); void startCall("video"); }}><span>▣</span>Video</button>
+              </> : <button type="button" disabled={busy} onClick={() => void sendRequest(friendProfile)}><span>＋</span>Add friend</button>}
             </div>
           </div>
           <div className="friend-profile-section">
