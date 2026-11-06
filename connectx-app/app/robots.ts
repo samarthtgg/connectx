@@ -4,8 +4,8 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: "/",
-      disallow: ["/api/", "/chat/", "/messages/"],
+      allow: ["/", "/about"],
+      disallow: ["/api/", "/chat/", "/chat-preview/", "/messages/"],
     },
     sitemap: "https://connectx-sandy.vercel.app/sitemap.xml",
     host: "https://connectx-sandy.vercel.app",
