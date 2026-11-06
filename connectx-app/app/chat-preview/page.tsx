@@ -163,7 +163,7 @@ ja:{"Home":"ホーム","Friends":"友達","Settings":"設定"},
 ko:{"Home":"홈","Friends":"친구","Settings":"설정"},
 zh:{"Home":"主页","Friends":"好友","Settings":"设置"}
 };
-\nconst tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLanguage]?.[key] || APP_COPY.en?.[key] || key;
+const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLanguage]?.[key] || APP_COPY.en?.[key] || key;
 
   // Keep document language and text direction in sync with the selected app language.
   useEffect(() => {
