@@ -12,14 +12,55 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = "https://connectx-sandy.vercel.app";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
-    default: "ConnectX",
+    default: "ConnectX – Chat, Share and Stay Connected",
     template: "%s | ConnectX",
   },
   description:
-    "ConnectX is your space to chat, share updates, and stay connected with friends.",
+    "ConnectX is a place to chat with friends, share status updates, make voice and video calls, and stay connected. Sign in or create your ConnectX account.",
   applicationName: "ConnectX",
+  keywords: [
+    "ConnectX",
+    "ConnectX chat",
+    "chat with friends",
+    "messaging app",
+    "voice and video calls",
+    "status updates",
+    "group chat",
+    "online messaging",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: siteUrl,
+    siteName: "ConnectX",
+    title: "ConnectX – Chat, Share and Stay Connected",
+    description:
+      "Chat with friends, share status updates, make voice and video calls, and stay connected with ConnectX.",
+  },
+  twitter: {
+    card: "summary",
+    title: "ConnectX – Chat, Share and Stay Connected",
+    description:
+      "Chat with friends, share status updates, make voice and video calls, and stay connected with ConnectX.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
