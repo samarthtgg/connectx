@@ -141,7 +141,29 @@ export default function ChatPreview() {
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [appLanguage, setAppLanguage] = useState("en");
   const [languageSaving, setLanguageSaving] = useState(false);
-  const tr = (key: string) => APP_COPY[appLanguage]?.[key] || APP_COPY.en?.[key] || key;
+  const APP_NAV_COPY: Record<string, Record<string,string>> = {
+en:{},
+hi:{"Home":"होम","Friends":"दोस्त","Settings":"सेटिंग्स"},
+mr:{"Home":"मुख्यपृष्ठ","Friends":"मित्र","Settings":"सेटिंग्ज"},
+gu:{"Home":"હોમ","Friends":"મિત્રો","Settings":"સેટિંગ્સ"},
+bn:{"Home":"হোম","Friends":"বন্ধুরা","Settings":"সেটিংস"},
+ta:{"Home":"முகப்பு","Friends":"நண்பர்கள்","Settings":"அமைப்புகள்"},
+te:{"Home":"హోమ్","Friends":"స్నేహితులు","Settings":"సెట్టింగ్‌లు"},
+kn:{"Home":"ಮುಖಪುಟ","Friends":"ಸ್ನೇಹಿತರು","Settings":"ಸೆಟ್ಟಿಂಗ್‌ಗಳು"},
+ml:{"Home":"ഹോം","Friends":"സുഹൃത്തുക്കൾ","Settings":"ക്രമീകരണങ്ങൾ"},
+pa:{"Home":"ਮੁੱਖ ਪੰਨਾ","Friends":"ਦੋਸਤ","Settings":"ਸੈਟਿੰਗਾਂ"},
+ur:{"Home":"ہوم","Friends":"دوست","Settings":"ترتیبات"},
+es:{"Home":"Inicio","Friends":"Amigos","Settings":"Ajustes"},
+fr:{"Home":"Accueil","Friends":"Amis","Settings":"Paramètres"},
+de:{"Home":"Startseite","Friends":"Freunde","Settings":"Einstellungen"},
+pt:{"Home":"Início","Friends":"Amigos","Settings":"Configurações"},
+ar:{"Home":"الرئيسية","Friends":"الأصدقاء","Settings":"الإعدادات"},
+id:{"Home":"Beranda","Friends":"Teman","Settings":"Pengaturan"},
+ja:{"Home":"ホーム","Friends":"友達","Settings":"設定"},
+ko:{"Home":"홈","Friends":"친구","Settings":"설정"},
+zh:{"Home":"主页","Friends":"好友","Settings":"设置"}
+};
+\nconst tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLanguage]?.[key] || APP_COPY.en?.[key] || key;
 
   // Keep document language and text direction in sync with the selected app language.
   useEffect(() => {
@@ -2494,16 +2516,16 @@ export default function ChatPreview() {
 
       <nav className="mobile-nav raised-nav" aria-label="Main navigation">
         <button aria-current={tab === "Messages" ? "page" : undefined} className={tab === "Messages" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Messages"); setSelectedFriend(null); groupMessageLoadRequestRef.current += 1; setSelectedGroup(null); setShowMobileChat(false); void loadGroups().catch((e) => setError(e.message)); }}>
-          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5.5 9v11h13V9M9 20v-6h6v6" /></svg></span><span className="nav-label">Home</span>
+          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5.5 9v11h13V9M9 20v-6h6v6" /></svg></span><span className="nav-label">{tr("Home")}</span>
         </button>
         <button aria-current={tab === "Status" ? "page" : undefined} className={tab === "Status" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Status"); setSelectedFriend(null); setShowMobileChat(false); }}>
-          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle className="status-dot" cx="12" cy="12" r="2.1"/></svg></span><span className="nav-label">Status</span>
+          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle className="status-dot" cx="12" cy="12" r="2.1"/></svg></span><span className="nav-label">{tr("Status")}</span>
         </button>
         <button aria-current={tab === "Friends" ? "page" : undefined} className={tab === "Friends" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Friends"); setShowMobileChat(false); }}>
-          <span className="nav-icon friends-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.4a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM17 4.5a3.5 3.5 0 0 1 0 6.8M17 14.7a4 4 0 0 1 4 4V20"/></svg></span>{incoming.length > 0 && <span className="nav-badge">{incoming.length > 99 ? "99+" : incoming.length}</span>}<span className="nav-label">Friends</span>
+          <span className="nav-icon friends-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.4a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM17 4.5a3.5 3.5 0 0 1 0 6.8M17 14.7a4 4 0 0 1 4 4V20"/></svg></span>{incoming.length > 0 && <span className="nav-badge">{incoming.length > 99 ? "99+" : incoming.length}</span>}<span className="nav-label">{tr("Friends")}</span>
         </button>
         <button aria-current={tab === "Settings" ? "page" : undefined} className={tab === "Settings" ? "nav-item active" : "nav-item"} onClick={() => { setTab("Settings"); setShowMobileChat(false); }}>
-          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 2Z" transform="translate(-1.5 -1.5) scale(1.12)"/></svg></span><span className="nav-label">Settings</span>
+          <span className="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 2Z" transform="translate(-1.5 -1.5) scale(1.12)"/></svg></span><span className="nav-label">{tr("Settings")}</span>
         </button>
       </nav>
       <section className={`cx-conversation ${showMobileChat ? "show-mobile" : ""}`}>
