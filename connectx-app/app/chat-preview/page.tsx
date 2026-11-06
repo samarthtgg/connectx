@@ -51,6 +51,7 @@ type DirectMessage = {
   media_path?: string | null;
   media_expires_at?: string | null;
   media_expired?: boolean;
+  expires_at?: string | null;
   media_url?: string | null;
 };
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; };
@@ -195,6 +196,8 @@ export default function ChatPreview() {
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const [blockedWithSelected, setBlockedWithSelected] = useState(false);
   const [blockActionBusy, setBlockActionBusy] = useState(false);
+  const [disappearingHours, setDisappearingHours] = useState(0);
+  const [disappearingBusy, setDisappearingBusy] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
@@ -216,7 +219,12 @@ export default function ChatPreview() {
     setFriendProfile(selectedFriend);
     setLoadingFriendProfile(true);
     setCommonGroups([]);
+    setDisappearingHours(0);
     try {
+      const [firstUser, secondUser] = [userId, selectedFriend.id].sort();
+      const { data: disappearingSetting, error: disappearingError } = await supabase.from("chat_disappearing_settings").select("duration_hours").eq("user_one", firstUser).eq("user_two", secondUser).maybeSingle();
+      if (disappearingError) throw disappearingError;
+      setDisappearingHours(disappearingSetting?.duration_hours ?? 0);
       const { data, error } = await supabase
         .from("profiles")
         .select("id,username,full_name,avatar_url,bio,is_private,show_last_seen")
@@ -1037,13 +1045,13 @@ export default function ChatPreview() {
   const loadMessages = useCallback(async (friendId: string, requestId: number) => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
-      .select("id,sender_id,receiver_id,content,created_at,read_at,edited_at,message_type,media_path,media_expires_at,media_expired,reply_to_id,reply_to_content,reply_to_sender_id")
+      .select("id,sender_id,receiver_id,content,created_at,read_at,edited_at,message_type,media_path,media_expires_at,media_expired,expires_at,reply_to_id,reply_to_content,reply_to_sender_id")
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${userId})`)
       .order("created_at", { ascending: false }).limit(100);
     if (messageError) throw messageError;
     if (requestId !== messageLoadRequestRef.current) return;
     const pref = chatPreferences.find((item) => item.friend_id === friendId);
-    const visible = (data ?? []).filter((item) => !pref?.cleared_at || new Date(item.created_at) > new Date(pref.cleared_at));
+    const visible = (data ?? []).filter((item) => (!pref?.cleared_at || new Date(item.created_at) > new Date(pref.cleared_at)) && (!item.expires_at || new Date(item.expires_at).getTime() > Date.now()));
     const now = Date.now();
     const mediaItems = visible.filter((item) => item.media_path && !item.media_expired && item.media_expires_at && new Date(item.media_expires_at).getTime() > now);
     const uniquePaths = Array.from(new Set(mediaItems.map((item) => item.media_path as string)));
@@ -1608,6 +1616,20 @@ export default function ChatPreview() {
     if(!voiceLockedRef.current){voiceAutoSendRef.current=true;stopVoiceRecording();}
   }
   function handleVoicePointerCancel(){if(voiceGestureRef.current){voiceGestureRef.current=null;cancelVoiceRecording();}}
+  async function saveDisappearingSetting(hours: number) {
+    if (!friendProfile || !userId || disappearingBusy) return;
+    setDisappearingBusy(true);
+    try {
+      const [user_one, user_two] = [userId, friendProfile.id].sort();
+      const { error: saveError } = await supabase.from("chat_disappearing_settings").upsert({ user_one, user_two, duration_hours: hours, updated_by: userId, updated_at: new Date().toISOString() }, { onConflict: "user_one,user_two" });
+      if (saveError) throw saveError;
+      setDisappearingHours(hours);
+      setNotice(hours === 0 ? "Disappearing messages turned off." : `New messages will disappear after ${hours === 24 ? "24 hours" : hours === 168 ? "7 days" : "30 days"}.`);
+      if (selectedFriend?.id === friendProfile.id) { const requestId = ++messageLoadRequestRef.current; await loadMessages(friendProfile.id, requestId); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not update disappearing messages."); }
+    finally { setDisappearingBusy(false); }
+  }
+
   async function sendVoiceMessage(blobToSend:Blob|null=voiceBlob){
     const voiceFile=blobToSend;
     if(!voiceFile||!userId||!selectedFriend||busy)return;
@@ -1623,7 +1645,8 @@ export default function ChatPreview() {
       const {error:uploadError}=await supabase.storage.from("connectx-voice-notes").upload(key,voiceFile,{contentType:voiceFile.type});
       if(uploadError)throw uploadError;
       const url=supabase.storage.from("connectx-voice-notes").getPublicUrl(key).data.publicUrl;
-      const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice",reply_to_id:replyTarget?.kind === "direct" ? replyTarget.id : null,reply_to_content:replyTarget?.kind === "direct" ? replyTarget.content : null,reply_to_sender_id:replyTarget?.kind === "direct" ? replyTarget.sender_id : null}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
+      const expiresAt = disappearingHours ? new Date(Date.now() + disappearingHours * 60 * 60 * 1000).toISOString() : null;
+      const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice",expires_at:expiresAt,reply_to_id:replyTarget?.kind === "direct" ? replyTarget.id : null,reply_to_content:replyTarget?.kind === "direct" ? replyTarget.content : null,reply_to_sender_id:replyTarget?.kind === "direct" ? replyTarget.sender_id : null}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,expires_at,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if(insertError)throw insertError;
       setMessages(old=>[...old,data as DirectMessage]);void loadRecentChats().catch((reason)=>setError(reason instanceof Error?reason.message:"Could not refresh chats."));setReplyTarget(null);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");voiceAutoSendRef.current=false;
     }catch(e){setError(e instanceof Error?e.message:"Could not send voice message.");}
@@ -1675,6 +1698,7 @@ export default function ChatPreview() {
         reply_to_sender_id: reply?.sender_id ?? null,
         content: text,
         message_type: "text",
+        expires_at: disappearingHours ? new Date(Date.now() + disappearingHours * 60 * 60 * 1000).toISOString() : null,
       };
 
       if (file) {
@@ -1698,11 +1722,12 @@ export default function ChatPreview() {
           media_path: uploadedPath,
           media_expires_at: expiresAt,
           media_expired: false,
+          expires_at: disappearingHours ? new Date(Date.now() + disappearingHours * 60 * 60 * 1000).toISOString() : null,
         };
       }
 
       const { data, error: insertError } = await supabase.from("messages").insert(insertPayload)
-        .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired,reply_to_id,reply_to_content,reply_to_sender_id")
+        .select("id,sender_id,receiver_id,content,created_at,read_at,message_type,media_path,media_expires_at,media_expired,expires_at,reply_to_id,reply_to_content,reply_to_sender_id")
         .single();
       if (insertError) throw insertError;
       if (!data) throw new Error("Message was not saved. Please try again.");
@@ -2580,7 +2605,15 @@ export default function ChatPreview() {
             <p>{loadingFriendProfile ? "Loading…" : friendProfile.bio?.trim() || "Hey there! I am using ConnectX."}</p>
             {friendProfile.show_last_seen === false && <span className="friend-profile-note">Last seen is hidden</span>}
           </div>
-          <div className="friend-profile-section friend-profile-media">
+          <div className="friend-profile-section friend-profile-disappearing">
+             <small>DISAPPEARING MESSAGES</small>
+             <p>New messages in this chat disappear after the selected time. This applies to both people.</p>
+             <div className="disappearing-options">
+               {[{hours:0,label:"Off"},{hours:24,label:"24 hours"},{hours:168,label:"7 days"},{hours:720,label:"30 days"}].map(option => <button key={option.hours} type="button" disabled={disappearingBusy || loadingFriendProfile} className={disappearingHours === option.hours ? "active" : ""} onClick={() => void saveDisappearingSetting(option.hours)}>{option.label}</button>)}
+             </div>
+             <span className="disappearing-status">{disappearingBusy ? "Saving setting…" : disappearingHours ? `Currently: ${disappearingHours === 24 ? "24 hours" : disappearingHours === 168 ? "7 days" : "30 days"}` : "Currently off"}</span>
+           </div>
+           <div className="friend-profile-section friend-profile-media">
             <small>MEDIA, LINKS AND DOCS</small>
             <strong>{messages.filter((m) => m.message_type === "image" || m.message_type === "video").length}</strong>
             <span>Shared photos and videos in this chat</span>
@@ -3166,6 +3199,12 @@ export default function ChatPreview() {
         .composer-modern .voice-preview button{min-height:34px;padding:0 11px;border:1px solid #51477b;border-radius:18px;background:#302b4b;color:#eeeaff;font-size:11px}
         @keyframes recording-pulse{50%{box-shadow:0 0 0 7px #ff527711;opacity:.75}}
         @media(max-width:700px){.composer-modern{padding:10px 12px calc(10px + env(safe-area-inset-bottom))!important}.composer-main-row{gap:9px}.composer-modern .attach-btn{width:42px;height:42px;flex-basis:42px}.composer-send-btn,.composer-modern .mic-btn{width:46px;height:46px;flex-basis:46px}.composer-input-wrap{min-height:46px;padding-left:13px}.composer-modern .composer-textarea{min-height:42px;font-size:14px}.recording-strip{min-height:46px;gap:7px;padding-left:11px}.recording-hint{font-size:10px}}
+        .friend-profile-disappearing p{margin:7px 0 12px;color:#a9a4bd;font-size:12px;line-height:1.5}
+        .disappearing-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+        .disappearing-options button{min-height:40px;padding:8px 10px;border:1px solid #48435e;border-radius:11px;background:#242238;color:#e8e3fa;font-size:12px;font-weight:650}
+        .disappearing-options button.active{border-color:#8e78ff;background:#3a315f;color:#fff;box-shadow:inset 0 0 0 1px #8e78ff55}
+        .disappearing-options button:disabled{opacity:.55}
+        .disappearing-status{display:block;margin-top:9px;color:#a99bff;font-size:11px}
         .message-edit-inline{display:grid;gap:9px;width:min(100%,420px);margin:10px 0;padding:11px;border:1px solid #a99aff88;border-radius:13px;background:rgba(20,22,35,.07)}
         .message-edit-inline textarea{display:block;width:100%;min-height:88px;max-height:220px;resize:vertical;box-sizing:border-box;padding:11px 12px;border:1px solid #8c80bf;border-radius:10px;background:#fff;color:#242238;font:inherit;font-size:14px;line-height:1.45;outline:none}
         .message-edit-inline textarea:focus{border-color:#7967e8;box-shadow:0 0 0 3px #7967e822}
