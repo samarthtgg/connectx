@@ -2302,8 +2302,8 @@ export default function ChatPreview() {
               return <div className="person-row" key={profile.id}>
                 {profile.avatar_url ? <img className="avatar" src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}
                 <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}{profile.is_private ? " · Private" : " · Public"}{isFriend ? " · Friend" : ""}</small></span>
-                {!isSelf && !isFriend && !relation && <button className="mini-btn muted-btn" disabled={busy} onClick={() => void sendRequest(profile)}>Add friend</button>}
-                {!isSelf && outgoingPending && <button className="mini-btn muted-btn" disabled>Requested</button>}
+                {!isSelf && !isFriend && !relation && <button className="mini-btn muted-btn" disabled={busy} onClick={() => void sendRequest(profile)}><span className={busy ? "request-send-spinner" : ""}>{busy ? "Sending…" : "Add friend"}</span></button>}
+                {!isSelf && outgoingPending && <button className="mini-btn request-pending-btn" disabled><span className="request-pending-icon" aria-hidden="true">✓</span><span>Pending</span><i className="request-pending-ripple" aria-hidden="true" /></button>}
                 {!isSelf && incomingPending && <button className="mini-btn muted-btn" disabled>Request received</button>}
                 <button className="mini-btn" disabled={!canMessage} onClick={() => void chooseFriend(profile)}>{isSelf ? "Message yourself" : "Message"}</button>
               </div>;
@@ -2629,6 +2629,15 @@ export default function ChatPreview() {
 
       <style jsx>{`
         * { box-sizing:border-box; }
+        .request-pending-btn{position:relative;display:inline-flex;align-items:center;gap:6px;overflow:hidden;border:1px solid #4b9d83!important;background:#15392f!important;color:#8ff0c5!important;cursor:default!important;animation:request-pending-glow 1.8s ease-in-out infinite}
+        .request-pending-icon{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#27b77e;color:#08251b;font-size:11px;font-weight:900;animation:request-check-pop .35s cubic-bezier(.2,1.5,.5,1) both}
+        .request-pending-ripple{position:absolute;inset:0;border-radius:inherit;pointer-events:none;animation:request-ripple 1.8s ease-out infinite}
+        .request-send-spinner{display:inline-flex;align-items:center;gap:6px}
+        .request-send-spinner:before{content:"";width:11px;height:11px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:connectx-refresh-spin .65s linear infinite}
+        @keyframes request-pending-glow{50%{box-shadow:0 0 0 3px #27b77e22}}
+        @keyframes request-check-pop{from{opacity:0;transform:scale(.35)}to{opacity:1;transform:scale(1)}}
+        @keyframes request-ripple{0%{box-shadow:inset 0 0 0 0 #62e6b233}70%,100%{box-shadow:inset 0 0 0 18px #62e6b200}}
+        @media(prefers-reduced-motion:reduce){.request-pending-btn,.request-pending-icon,.request-pending-ripple,.request-send-spinner:before{animation:none!important}}
         .cx-shell { height:100dvh; min-height:540px; display:flex; overflow:hidden; background:#0b1020; color:#f5f6fc; font-family:Inter,system-ui,Arial,sans-serif; }
         .cx-rail { width:68px; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:16px; padding:20px 0; background:#101727; border-right:1px solid #232d42; }
         .cx-mark { width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:#7868eb;font-size:23px;margin-bottom:16px; }
