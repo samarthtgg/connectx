@@ -141,7 +141,14 @@ export default function ChatPreview() {
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [appLanguage, setAppLanguage] = useState("en");
   const [languageSaving, setLanguageSaving] = useState(false);
-  const tr = (key: string) => APP_COPY[appLanguage]?.[key] || key;
+  const tr = (key: string) => APP_COPY[appLanguage]?.[key] || APP_COPY.en?.[key] || key;
+
+  // Keep document language and text direction in sync with the selected app language.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = appLanguage;
+    document.documentElement.dir = appLanguage === "ar" || appLanguage === "ur" ? "rtl" : "ltr";
+  }, [appLanguage]);
   const changeAppLanguage = async (next: string) => {
     setAppLanguage(next);
     try { localStorage.setItem("connectx-language", next); } catch {}
