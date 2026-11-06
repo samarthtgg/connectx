@@ -2472,22 +2472,22 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             })}
             {showLockedChats && chatLockUnlocked && chatLockIds.length === 0 && <p className="empty">{tr("No locked chats yet.")}</p>}
             <section className="group-tiles-section" aria-label="Your groups">
-              <div className="group-tiles-heading"><strong>GROUPS <span>· {groups.length}</span></strong><button type="button" onClick={() => setShowAllGroups(value => !value)}>{showAllGroups ? "Show less" : "See all"}</button></div>
+              <div className="group-tiles-heading"><strong>{tr("GROUPS")} <span>· {groups.length}</span></strong><button type="button" onClick={() => setShowAllGroups(value => !value)}>{showAllGroups ? tr("Show less") : tr("See all")}</button></div>
               <div className="group-tiles-row">
-                <button type="button" className="group-tile group-tile-new" onClick={() => setShowCreateGroup(true)} aria-label="Create a new group"><span className="group-tile-avatar"><span>＋</span></span><strong>New</strong></button>
+                <button type="button" className="group-tile group-tile-new" onClick={() => setShowCreateGroup(true)} aria-label={tr("Create a new group")}><span className="group-tile-avatar"><span>＋</span></span><strong>{tr("New")}</strong></button>
                 {groups.filter(group => !chatLockIds.includes("group:" + group.id)).slice(0, showAllGroups ? groups.length : 7).map(group => (
                   <button type="button" className="group-tile" key={group.id} onClick={() => void openGroup(group)} onContextMenu={event => { event.preventDefault(); toggleChatLock("group:" + group.id); }}>
                     <span className="group-tile-avatar">{group.avatar_url ? <img src={group.avatar_url} alt="" /> : <span>{initials(group.name)}</span>}</span><strong>{group.name}</strong>
                   </button>
                 ))}
               </div>
-              {groups.length === 0 && <p className="group-empty">Create a group and bring your people together.</p>}
+              {groups.length === 0 && <p className="group-empty">{tr("Create a group and bring your people together.")}</p>}
             </section>
             <div className="section-caption">{tr("CHATS")} <button type="button" className="text-btn" onClick={() => setShowArchivedChats((value) => !value)}>{showArchivedChats ? tr("Back to chats") : tr("Archive") + " (" + archivedFriends.length + ")"}</button></div>
             {!showArchivedChats && myProfile && <button type="button" className={"chat-row self-chat-row " + (selectedFriend?.id === userId ? "active" : "")} onClick={() => { setChatActionMenuId(null); chooseFriend(myProfile); }}>
               {myProfile.avatar_url ? <img className="avatar chat-row-photo" src={myProfile.avatar_url} alt="Your profile photo" /> : <span className="avatar">{initials(displayName(myProfile))}</span>}
-              <span className="chat-info"><strong>{displayName(myProfile)} (You)</strong><small>Personal notes · Message yourself</small></span>
-              <span className="self-chat-badge">You</span>
+              <span className="chat-info"><strong>{displayName(myProfile)} (You)</strong><small>{tr("Personal notes · Message yourself")}</small></span>
+              <span className="self-chat-badge">{tr("You")}</span>
             </button>}
             {homeChats.map((friend) => {
               const preference = chatPreferences.find((item) => item.friend_id === friend.id);
@@ -2498,12 +2498,12 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                 onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
                 onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } setChatActionMenuId(null); chooseFriend(friend); }}>
                 {friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}
-                <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{recentChat?.preview || (friend.username ? `@${friend.username}` : "Tap to open chat")}{preference?.unread_at ? " · Unread" : ""}</small></span>
+                <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{recentChat?.preview || (friend.username ? `@${friend.username}` : tr("Tap to open chat"))}{preference?.unread_at ? " · " + tr("Unread") : ""}</small></span>
               </button>
               {chatActionMenuId === friend.id && <div className="chat-row-tools">
                 <button type="button" className="text-btn" onClick={() => { toggleChatLock("friend:" + friend.id); setChatActionMenuId(null); }}>{chatLockIds.includes("friend:" + friend.id) ? tr("Unlock") : tr("Chat Lock")}</button>
-                <button type="button" className="text-btn" onClick={() => { void togglePinnedChat(friend.id); setChatActionMenuId(null); }}>{preference?.is_pinned ? "Unpin" : "Pin"}</button>
-                <button type="button" className="text-btn" onClick={() => { void toggleUnreadChat(friend.id); setChatActionMenuId(null); }}>{preference?.unread_at ? "Mark read" : "Mark as read"}</button>
+                <button type="button" className="text-btn" onClick={() => { void togglePinnedChat(friend.id); setChatActionMenuId(null); }}>{preference?.is_pinned ? tr("Unpin") : tr("Pin")}</button>
+                <button type="button" className="text-btn" onClick={() => { void toggleUnreadChat(friend.id); setChatActionMenuId(null); }}>{preference?.unread_at ? tr("Mark read") : tr("Mark as read")}</button>
                 <button type="button" className="text-btn" onClick={() => { void toggleArchivedChat(friend.id); setChatActionMenuId(null); }}>{preference?.is_archived ? tr("Restore") : tr("Archive")}</button>
               </div>}
               </div>;
