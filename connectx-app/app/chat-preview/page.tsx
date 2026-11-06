@@ -56,6 +56,7 @@ type DirectMessage = {
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null };
+type RecentChat = { profile: Profile; preview: string; lastMessageAt: string };
 type ChatGroup = { id: string; name: string; description: string | null; avatar_url: string | null; created_by: string; created_at: string; my_role?: string };
 type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean; reply_to_id?: string | null; reply_to_content?: string | null; reply_to_sender_id?: string | null };
 
@@ -148,6 +149,7 @@ export default function ChatPreview() {
   const [profilesLoadAttempted, setProfilesLoadAttempted] = useState(false);
   const [profilesLoadError, setProfilesLoadError] = useState("");
   const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [typing, setTyping] = useState(false);
@@ -496,6 +498,24 @@ export default function ChatPreview() {
     () => profiles.filter((profile) => acceptedIds.has(profile.id) && !!chatPreferences.find((pref) => pref.friend_id === profile.id)?.is_archived),
     [profiles, acceptedIds, chatPreferences],
   );
+  const recentChatById = useMemo(
+    () => new Map(recentChats.map((chat) => [chat.profile.id, chat])),
+    [recentChats],
+  );
+  const homeChats = useMemo(() => {
+    if (showArchivedChats) return archivedFriends;
+    const unique = new Map<string, Profile>();
+    friends.forEach((friend) => unique.set(friend.id, friend));
+    recentChats.forEach((chat) => unique.set(chat.profile.id, chat.profile));
+    return Array.from(unique.values()).sort((a, b) => {
+      const aPinned = !!chatPreferences.find((pref) => pref.friend_id === a.id)?.is_pinned;
+      const bPinned = !!chatPreferences.find((pref) => pref.friend_id === b.id)?.is_pinned;
+      if (aPinned !== bPinned) return Number(bPinned) - Number(aPinned);
+      const aTime = recentChatById.get(a.id)?.lastMessageAt ?? "";
+      const bTime = recentChatById.get(b.id)?.lastMessageAt ?? "";
+      return bTime.localeCompare(aTime);
+    });
+  }, [showArchivedChats, archivedFriends, friends, recentChats, recentChatById, chatPreferences]);
   const statusGroups = useMemo(() => {
     const grouped = new Map<string, StatusUpdate[]>();
     statuses.filter((status) => status.user_id !== userId).forEach((status) => {
@@ -953,6 +973,63 @@ export default function ChatPreview() {
 
   useEffect(() => { if (userId) void loadChatPreferences().catch((e) => setError(e.message)); }, [userId, loadChatPreferences]);
 
+  const loadRecentChats = useCallback(async () => {
+    if (!userId) return;
+    const { data, error: messageError } = await supabase.from("messages")
+      .select("sender_id,receiver_id,content,created_at,message_type")
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+      .order("created_at", { ascending: false }).limit(500);
+    if (messageError) throw messageError;
+
+    const latestByContact = new Map<string, { preview: string; created_at: string }>();
+    for (const row of data ?? []) {
+      const contactId = row.sender_id === userId ? row.receiver_id : row.sender_id;
+      if (!contactId || contactId === userId || latestByContact.has(contactId)) continue;
+      const preference = chatPreferences.find((item) => item.friend_id === contactId);
+      if (preference?.hidden_at || preference?.is_archived) continue;
+      if (preference?.cleared_at && new Date(row.created_at).getTime() <= new Date(preference.cleared_at).getTime()) continue;
+      const preview = row.message_type === "voice" ? "🎙 Voice message"
+        : row.message_type === "image" ? "📷 Photo"
+        : row.message_type === "video" ? "🎬 Video"
+        : row.content || "Message";
+      latestByContact.set(contactId, { preview, created_at: row.created_at });
+    }
+
+    const contactIds = Array.from(latestByContact.keys());
+    if (!contactIds.length) {
+      setRecentChats([]);
+      return;
+    }
+    const { data: contactProfiles, error: profileError } = await supabase.from("profiles")
+      .select("id,username,full_name,avatar_url,is_private")
+      .in("id", contactIds);
+    if (profileError) throw profileError;
+    const profileById = new Map((contactProfiles ?? []).map((profile) => [profile.id, profile as Profile]));
+    setRecentChats(contactIds.map((id) => ({
+      profile: profileById.get(id) ?? { id, username: null, full_name: null, avatar_url: null },
+      preview: latestByContact.get(id)?.preview ?? "Message",
+      lastMessageAt: latestByContact.get(id)?.created_at ?? "",
+    })));
+  }, [userId, chatPreferences]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void loadRecentChats().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load recent chats."));
+  }, [userId, loadRecentChats]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase.channel("home-chat-list-" + userId)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: "sender_id=eq." + userId }, () => {
+        void loadRecentChats().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh chats."));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: "receiver_id=eq." + userId }, () => {
+        void loadRecentChats().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh chats."));
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId, loadRecentChats]);
+
   const loadMessages = useCallback(async (friendId: string, requestId: number) => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
@@ -1354,7 +1431,7 @@ export default function ChatPreview() {
     setError("");
     setNotice("");
     try {
-      await Promise.all([loadBase(userId), loadChatPreferences(), loadGroups(), loadStatuses()]);
+      await Promise.all([loadBase(userId), loadChatPreferences(), loadGroups(), loadStatuses(), loadRecentChats()]);
       if (selectedFriend) {
         const requestId = ++messageLoadRequestRef.current;
         await loadMessages(selectedFriend.id, requestId);
@@ -1378,7 +1455,7 @@ export default function ChatPreview() {
       if (remaining > 0) await new Promise((resolve) => window.setTimeout(resolve, remaining));
       setRefreshing(false);
     }
-  }, [userId, refreshing, loadBase, loadChatPreferences, loadGroups, loadStatuses, selectedFriend, loadMessages, selectedGroup, loadGroupProfile, loadGroupFeed]);
+  }, [userId, refreshing, loadBase, loadChatPreferences, loadGroups, loadStatuses, loadRecentChats, selectedFriend, loadMessages, selectedGroup, loadGroupProfile, loadGroupFeed]);
 
   const activeViewedStatus = viewingStatuses[viewingStatusIndex] ?? null;
   useEffect(() => {
@@ -1424,6 +1501,7 @@ export default function ChatPreview() {
       reply_to_sender_id:status.user_id
     });
     if (error) throw error;
+    void loadRecentChats().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh chats."));
   }
 
   async function sendStatusReply(event: FormEvent<HTMLFormElement>) {
@@ -1440,6 +1518,7 @@ export default function ChatPreview() {
       }).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if (error) throw error;
       const recipient = profiles.find(profile => profile.id === status.user_id);
+      void loadRecentChats().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh chats."));
       setStatusReply(""); setViewingStatusUser(null);
       if (recipient) { await chooseFriend(recipient); setMessages(old => [...old.filter(item => item.id !== data.id), data as DirectMessage]); }
       setNotice("Status reply sent.");
@@ -1537,7 +1616,7 @@ export default function ChatPreview() {
       const url=supabase.storage.from("connectx-voice-notes").getPublicUrl(key).data.publicUrl;
       const {data,error:insertError}=await supabase.from("messages").insert({sender_id:userId,receiver_id:selectedFriend.id,content:url,message_type:"voice",reply_to_id:replyTarget?.kind === "direct" ? replyTarget.id : null,reply_to_content:replyTarget?.kind === "direct" ? replyTarget.content : null,reply_to_sender_id:replyTarget?.kind === "direct" ? replyTarget.sender_id : null}).select("id,sender_id,receiver_id,content,created_at,read_at,message_type,reply_to_id,reply_to_content,reply_to_sender_id").single();
       if(insertError)throw insertError;
-      setMessages(old=>[...old,data as DirectMessage]);setReplyTarget(null);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");voiceAutoSendRef.current=false;
+      setMessages(old=>[...old,data as DirectMessage]);void loadRecentChats().catch((reason)=>setError(reason instanceof Error?reason.message:"Could not refresh chats."));setReplyTarget(null);setVoiceBlob(null);if(voicePreview)URL.revokeObjectURL(voicePreview);setVoicePreview("");voiceAutoSendRef.current=false;
     }catch(e){setError(e instanceof Error?e.message:"Could not send voice message.");}
     finally{setBusy(false);}
   }
@@ -1619,6 +1698,7 @@ export default function ChatPreview() {
       if (!data) throw new Error("Message was not saved. Please try again.");
 
       const sentMessage = data as DirectMessage;
+      void loadRecentChats().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh chats."));
       setMessages((old) => {
         const withoutOptimistic = old.filter((item) => item.id !== optimisticId);
         return withoutOptimistic.some((item) => item.id === sentMessage.id)
@@ -2108,7 +2188,7 @@ export default function ChatPreview() {
           <button type="button" className={`refresh-btn ${refreshing ? "is-refreshing" : ""}`} aria-label={refreshing ? "Refreshing" : "Refresh"} title={refreshing ? "Refreshing…" : "Refresh"} disabled={refreshing || !userId} onClick={refreshApp}><span>↻</span></button>
         </div></div>}
 
-        <div className="list-label">{tab.toUpperCase()} <span>{tab === "Friends" ? filteredProfiles.length : tab === "Messages" ? friends.length : ""}</span></div>
+        <div className="list-label">{tab.toUpperCase()} <span>{tab === "Friends" ? filteredProfiles.length : tab === "Messages" ? homeChats.length : ""}</span></div>
 
         {loading ? <p className="empty">Loading your account…</p> : tab === "Settings" ? (
           <form className="settings-panel profile-editor" onSubmit={saveProfile}>
@@ -2264,15 +2344,16 @@ export default function ChatPreview() {
               <span className="chat-info"><strong>{displayName(myProfile)} (You)</strong><small>Personal notes · Message yourself</small></span>
               <span className="self-chat-badge">You</span>
             </button>}
-            {(showArchivedChats ? archivedFriends : friends).map((friend) => {
+            {homeChats.map((friend) => {
               const preference = chatPreferences.find((item) => item.friend_id === friend.id);
+              const recentChat = recentChatById.get(friend.id);
               return <div className="chat-row-wrap" key={friend.id}>
               <button className={`chat-row ${selectedFriend?.id === friend.id ? "active" : ""} ${selectedChats.includes(friend.id) ? "chat-selected" : ""}`}
                 onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
                 onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
                 onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } setChatActionMenuId(null); chooseFriend(friend); }}>
                 {friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}
-                <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{friend.username ? `@${friend.username}` : "Tap to open chat"}{preference?.unread_at ? " · Unread" : ""}</small></span>
+                <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{recentChat?.preview || (friend.username ? `@${friend.username}` : "Tap to open chat")}{preference?.unread_at ? " · Unread" : ""}</small></span>
               </button>
               {chatActionMenuId === friend.id && <div className="chat-row-tools">
                 <button type="button" className="text-btn" onClick={() => { toggleChatLock("friend:" + friend.id); setChatActionMenuId(null); }}>{chatLockIds.includes("friend:" + friend.id) ? "Unlock" : "Chat Lock"}</button>
@@ -2282,7 +2363,7 @@ export default function ChatPreview() {
               </div>}
               </div>;
             })}
-            {(showArchivedChats ? archivedFriends : friends).length === 0 && <p className="empty">{showArchivedChats ? "No archived chats." : "No friends yet. Open Friends to find people and send a request."}</p>}
+            {homeChats.length === 0 && <p className="empty">{showArchivedChats ? "No archived chats." : "No chats yet. Search for someone in Friends and send your first message."}</p>}
           </div>
         )}
       </section>
