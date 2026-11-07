@@ -269,6 +269,9 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const [editGroupMessageDraft, setEditGroupMessageDraft] = useState("");
   const [editGroupMessageBusy, setEditGroupMessageBusy] = useState(false);
   const [messageSelectionMode, setMessageSelectionMode] = useState(false);
+  const [forwardPickerOpen, setForwardPickerOpen] = useState(false);
+  const [forwardRecipientIds, setForwardRecipientIds] = useState<string[]>([]);
+  const [forwardBusy, setForwardBusy] = useState(false);
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [showArchivedChats, setShowArchivedChats] = useState(false);
   const [chatActionMenuId, setChatActionMenuId] = useState<string | null>(null);
@@ -1507,6 +1510,38 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     }
   }
 
+  async function forwardSelectedMessages() {
+    const selected = messages.filter((message) => selectedMessageIds.includes(message.id));
+    if (!selected.length || !forwardRecipientIds.length || !userId || forwardBusy) return;
+    setForwardBusy(true); setError("");
+    try {
+      for (const recipientId of forwardRecipientIds) {
+        if (recipientId === userId) continue;
+        const recipient = profiles.find((profile) => profile.id === recipientId);
+        if (!recipient || (recipient.is_private && !acceptedIds.has(recipientId))) continue;
+        const payload = selected.map((message) => ({
+          sender_id: userId,
+          receiver_id: recipientId,
+          content: message.content,
+          message_type: message.message_type || "text",
+          media_path: message.media_path || null,
+          media_expires_at: message.media_expires_at || null,
+          reply_to_id: null,
+          reply_to_content: null,
+          reply_to_sender_id: null,
+        }));
+        const { error: forwardError } = await supabase.from("messages").insert(payload);
+        if (forwardError) throw forwardError;
+      }
+      setForwardPickerOpen(false); setForwardRecipientIds([]);
+      setSelectedMessageIds([]); setMessageSelectionMode(false);
+      setNotice(selected.length + " message(s) forwarded to " + forwardRecipientIds.length + " chat(s).");
+      void loadRecentChats().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh chats."));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not forward selected messages.");
+    } finally { setForwardBusy(false); }
+  }
+
   async function deleteSelectedMessages() {
     const selected = messages.filter((message) => selectedMessageIds.includes(message.id));
     if (!selected.length) { setNotice("Select at least one message to delete."); return; }
@@ -2732,6 +2767,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
           {chatSearchOpen && <div className="chat-search-bar chat-search-advanced"><div className="chat-search-top"><input autoFocus value={chatSearch} onChange={e=>setChatSearch(e.target.value)} placeholder="Search words or phrases…" aria-label="Search message text"/><strong>{filteredChatMessages.length} found</strong><button type="button" aria-label="Close search" onClick={()=>{setChatSearchOpen(false);setChatSearch("");setChatSearchFrom("");setChatSearchTo("");setChatSearchSender("all");}}>×</button></div><div className="chat-search-filters"><label>From date<input type="date" value={chatSearchFrom} max={chatSearchTo || undefined} onChange={e=>setChatSearchFrom(e.target.value)}/></label><label>To date<input type="date" value={chatSearchTo} min={chatSearchFrom || undefined} onChange={e=>setChatSearchTo(e.target.value)}/></label><label>Sender<select value={chatSearchSender} onChange={e=>setChatSearchSender(e.target.value as "all" | "me" | "them")}><option value="all">Everyone</option><option value="me">You</option><option value="them">{activeName}</option></select></label><button type="button" className="chat-search-clear" onClick={()=>{setChatSearch("");setChatSearchFrom("");setChatSearchTo("");setChatSearchSender("all");}}>Clear filters</button></div><small>Searches the latest 100 messages loaded in this chat.</small></div>}
           {messageSelectionMode && <div className="bulk-actions message-selection-toolbar">
             <strong>{selectedMessageIds.length} message(s) selected</strong>
+            <button type="button" disabled={!selectedMessageIds.length} onClick={() => setForwardPickerOpen(true)}>Forward</button>
             <button type="button" disabled={!selectedMessageIds.length} onClick={() => void copySelectedMessages()}>Copy</button>
             <button type="button" className="danger-option" disabled={!selectedMessageIds.length} onClick={() => void deleteSelectedMessages()}>Delete</button>
             <button type="button" onClick={() => { setMessageSelectionMode(false); setSelectedMessageIds([]); }}>Cancel</button>
@@ -2749,7 +2785,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
                   {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
                   <button className="react-trigger" onClick={() => setReactionMessage(reactionMessage === message.id ? null : message.id)} aria-label="React to message">☺</button>
-                  <div className="message-quick-actions" style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}><button type="button" style={{fontSize:12}} onClick={() => void copyMessage(message)}>Copy</button>{mine && message.message_type === "text" && !message.id.startsWith("optimistic-") && <button type="button" style={{fontSize:12}} onClick={() => { setError(""); setNotice(""); setEditingMessageId(message.id); setEditMessageDraft(message.content); }}>Edit</button>}<button type="button" style={{fontSize:12}} onClick={() => setReplyTarget({kind:"direct",id:message.id,content:message.content,sender_id:message.sender_id})}>Reply</button></div>
+                  <div className="message-quick-actions" style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}><button type="button" style={{fontSize:12}} onClick={() => { setMessageSelectionMode(true); setSelectedMessageIds([message.id]); }}>Select</button><button type="button" style={{fontSize:12}} onClick={() => void copyMessage(message)}>Copy</button>{mine && message.message_type === "text" && !message.id.startsWith("optimistic-") && <button type="button" style={{fontSize:12}} onClick={() => { setError(""); setNotice(""); setEditingMessageId(message.id); setEditMessageDraft(message.content); }}>Edit</button>}<button type="button" style={{fontSize:12}} onClick={() => setReplyTarget({kind:"direct",id:message.id,content:message.content,sender_id:message.sender_id})}>Reply</button></div>
                 </div>
               </div>;
             })}
@@ -2788,6 +2824,20 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
         </> : <div className="empty-state">{tab === "Friends" ? "Find people and build your friends list." : "Choose a friend to start messaging."}</div>}
       </section>
 
+      {forwardPickerOpen && <div className="profile-modal-backdrop" onClick={() => !forwardBusy && setForwardPickerOpen(false)}>
+        <section className="friend-profile-card" role="dialog" aria-modal="true" aria-label="Forward messages" onClick={(event) => event.stopPropagation()}>
+          <header className="friend-profile-topbar"><button type="button" onClick={() => setForwardPickerOpen(false)} aria-label="Close">‹</button><strong>Forward {selectedMessageIds.length} message(s)</strong><span /></header>
+          <div className="friend-profile-section">
+            <small>CHOOSE RECIPIENTS</small>
+            {profiles.filter((profile) => profile.id !== userId && acceptedIds.has(profile.id)).map((profile) => <label key={profile.id} className="group-profile-member">
+              <input type="checkbox" checked={forwardRecipientIds.includes(profile.id)} disabled={forwardBusy} onChange={(event) => setForwardRecipientIds((old) => event.target.checked ? [...old, profile.id] : old.filter((id) => id !== profile.id))}/>
+              <span className="group-member-name"><strong>{displayName(profile)}</strong>{profile.username && <small>@{profile.username}</small>}</span>
+            </label>)}
+            {!profiles.some((profile) => profile.id !== userId && acceptedIds.has(profile.id)) && <p>No friends available to forward to.</p>}
+            <button type="button" className="action-btn" disabled={!forwardRecipientIds.length || forwardBusy} onClick={() => void forwardSelectedMessages()}>{forwardBusy ? "Forwarding…" : "Forward to " + forwardRecipientIds.length + " chat(s)"}</button>
+          </div>
+        </section>
+      </div>}
       {groupProfileOpen && selectedGroup && <div className="profile-modal-backdrop group-profile-backdrop" onClick={() => setGroupProfileOpen(false)}>
         <section className="friend-profile-card group-profile-card" role="dialog" aria-modal="true" aria-label="Group info" onClick={event => event.stopPropagation()}>
           <header className="friend-profile-topbar"><button type="button" onClick={() => setGroupProfileOpen(false)} aria-label="Back">‹</button><strong>Group info</strong><span className="group-info-header-spacer" /></header>
