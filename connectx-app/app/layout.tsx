@@ -17,11 +17,11 @@ const siteUrl = "https://connectx-sandy.vercel.app";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "ConnectX – Chat, Share and Stay Connected",
+    default: "ConnectX – Chat with Friends | Messaging, Groups & Calls",
     template: "%s | ConnectX",
   },
   description:
-    "ConnectX is a place to chat with friends, share status updates, make voice and video calls, and stay connected. Sign in or create your ConnectX account.",
+    "Chat with friends on ConnectX. Send private messages, join group conversations, share status updates, and connect with voice and video calls.",
   applicationName: "ConnectX",
   keywords: [
     "ConnectX",
@@ -40,9 +40,9 @@ export const metadata: Metadata = {
     type: "website",
     url: siteUrl,
     siteName: "ConnectX",
-    title: "ConnectX – Chat, Share and Stay Connected",
+    title: "ConnectX – Chat with Friends | Messaging, Groups & Calls",
     description:
-      "Chat with friends, share status updates, make voice and video calls, and stay connected with ConnectX.",
+      "Connect with friends on ConnectX through private messages, group conversations, status updates, and voice and video calls.",
   },
   twitter: {
     card: "summary",
