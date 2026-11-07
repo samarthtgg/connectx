@@ -54,7 +54,7 @@ type DirectMessage = {
   expires_at?: string | null;
   media_url?: string | null;
 };
-type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; };
+type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; audience?:"friends"|"close_friends"; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null };
 type RecentChat = { profile: Profile; preview: string; lastMessageAt: string };
@@ -435,6 +435,10 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     if (mainTabOrder[next] === "Messages") void loadGroups().catch((error) => setError(error.message));
   }
   const [statuses,setStatuses]=useState<StatusUpdate[]>([]);
+  const [closeFriendIds, setCloseFriendIds] = useState<Set<string>>(() => new Set());
+  const [showCloseFriends, setShowCloseFriends] = useState(false);
+  const [statusAudience, setStatusAudience] = useState<"friends" | "close_friends">("friends");
+  const [closeFriendsBusyId, setCloseFriendsBusyId] = useState<string | null>(null);
   const [statusCaption,setStatusCaption]=useState("");
   const [statusFile,setStatusFile]=useState<File|null>(null);
   const [showStatusComposer,setShowStatusComposer]=useState(false);
@@ -602,6 +606,31 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     }
     return ids;
   }, [requests, userId]);
+
+  const loadCloseFriends = useCallback(async () => {
+    if (!userId) { setCloseFriendIds(new Set()); return; }
+    const { data, error } = await supabase.from("close_friends").select("friend_id").eq("owner_id", userId);
+    if (error) throw error;
+    setCloseFriendIds(new Set((data ?? []).map((row: { friend_id: string }) => row.friend_id)));
+  }, [userId]);
+  useEffect(() => { if (userId) void loadCloseFriends().catch((error) => setError(error.message)); }, [userId, loadCloseFriends]);
+
+  async function toggleCloseFriend(friendId: string, shouldAdd: boolean) {
+    if (!userId || closeFriendsBusyId) return;
+    setCloseFriendsBusyId(friendId); setError("");
+    try {
+      if (shouldAdd) {
+        const { error } = await supabase.from("close_friends").insert({ owner_id: userId, friend_id: friendId });
+        if (error) throw error;
+        setCloseFriendIds(old => new Set([...old, friendId]));
+      } else {
+        const { error } = await supabase.from("close_friends").delete().eq("owner_id", userId).eq("friend_id", friendId);
+        if (error) throw error;
+        setCloseFriendIds(old => { const next = new Set(old); next.delete(friendId); return next; });
+      }
+    } catch (error) { setError(error instanceof Error ? error.message : "Could not update Close Friends."); }
+    finally { setCloseFriendsBusyId(null); }
+  }
 
   const incoming = useMemo(
     () => requests.filter((r) => r.receiver_id === userId && r.status === "pending"),
@@ -1541,7 +1570,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const loadStatuses=useCallback(async()=>{
     if(!userId)return;
     const visibleOwnerIds = [userId, ...Array.from(acceptedIds)];
-    const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at").in("user_id",visibleOwnerIds).gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false}).limit(100);
+    const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at,audience")
     if(error)throw error; setStatuses((data??[]) as StatusUpdate[]);
   },[userId,acceptedIds]);
   useEffect(()=>{if(userId)void loadStatuses().catch(e=>setError(e.message));},[userId,loadStatuses]);
@@ -1665,7 +1694,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
         if(uploadError)throw uploadError;
         mediaUrl=supabase.storage.from("connectx-status-media").getPublicUrl(key).data.publicUrl;
       }
-      const {error:saveError}=await supabase.from("status_updates").insert({user_id:userId,caption:statusCaption.trim()||null,media_url:mediaUrl,media_type:mediaType});
+      const {error:saveError}=await supabase.from("status_updates").insert({user_id:userId,caption:statusCaption.trim()||null,media_url:mediaUrl,media_type:mediaType,audience:statusAudience});
       if(saveError)throw saveError;
       setStatusCaption("");setStatusFile(null);setShowStatusComposer(false);if(statusInputRef.current)statusInputRef.current.value="";
       await loadStatuses();setNotice("Status shared for 24 hours.");
@@ -2399,7 +2428,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
           </form>
         ) : tab === "Status" ? (
           <div className="cx-chats status-panel">
-            <div className="status-topbar"><div><h2>{tr("Updates")}</h2><p>{tr("Share what’s happening")}</p></div><button type="button" className="status-camera" onClick={() => setShowStatusComposer(true)} aria-label="Add status">＋</button></div>
+<div className="status-topbar"><div><h2>{tr("Updates")}</h2><p>{tr("Share what’s happening")}</p></div><div className="status-top-actions"><button type="button" className="mini-btn" onClick={() => setShowCloseFriends(true)}>☆ {tr("Close Friends")} · {closeFriendIds.size}</button><button type="button" className="status-camera" onClick={() => { setStatusAudience("friends"); setShowStatusComposer(true); }} aria-label="Add status">＋</button></div></div>
             <div className="status-list">
               <button type="button" className="status-person my-status-row" onClick={() => myStatuses.length ? (setViewingStatusUser(userId),setViewingStatusIndex(Math.max(0,myStatuses.length-1))) : setShowStatusComposer(true)}>
                 <span className="status-avatar-wrap own"><span className="status-avatar">{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(displayName(myProfile ?? {id:userId,username:null,full_name:"You",avatar_url:null}))}</span><i>＋</i></span>
@@ -2456,10 +2485,21 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
               <form className="status-compose" onSubmit={publishStatus} onClick={e => e.stopPropagation()}>
                 <div className="status-compose-head"><strong>New status</strong><button type="button" onClick={() => setShowStatusComposer(false)} aria-label="Close">×</button></div>
                 <textarea value={statusCaption} onChange={e=>setStatusCaption(e.target.value)} maxLength={700} placeholder="What’s on your mind?" />
+                <label className="profile-field">{tr("Share with")}<select value={statusAudience} onChange={e => setStatusAudience(e.target.value as "friends" | "close_friends")}><option value="friends">{tr("All friends")}</option><option value="close_friends">{tr("Close Friends only")} ({closeFriendIds.size})</option></select></label>
+                {statusAudience === "close_friends" && closeFriendIds.size === 0 && <small className="profile-hint">{tr("Add people to Close Friends before sharing to this audience.")}</small>}
                 <label className="status-file">＋ Add photo or video<input ref={statusInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={e=>setStatusFile(e.target.files?.[0]??null)} /></label>
                 {statusFile && <small>{statusFile.name} · {(statusFile.size/1024/1024).toFixed(1)} MB</small>}
                 <button className="action-btn" disabled={busy||(!statusCaption.trim()&&!statusFile)}>{busy?"Sharing…":"Share status"}</button>
               </form>
+            </div>}
+            {showCloseFriends && <div className="status-modal-backdrop" onClick={() => setShowCloseFriends(false)}>
+              <div className="status-compose close-friends-compose" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="status-compose-head"><strong>{tr("Close Friends")}</strong><button type="button" onClick={() => setShowCloseFriends(false)} aria-label="Close">×</button></div>
+                <p className="profile-hint">{tr("Only people on this list can see statuses shared with Close Friends.")}</p>
+                {profiles.filter(profile => acceptedIds.has(profile.id)).map(profile => <label className="privacy-option close-friend-option" key={profile.id}><span className="close-friend-person">{profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}<strong>{displayName(profile)}</strong></span><input type="checkbox" checked={closeFriendIds.has(profile.id)} disabled={closeFriendsBusyId === profile.id} onChange={e => void toggleCloseFriend(profile.id, e.target.checked)} /></label>)}
+                {profiles.filter(profile => acceptedIds.has(profile.id)).length === 0 && <p className="empty">{tr("Accept friend requests first to add people here.")}</p>}
+                <button className="action-btn" type="button" onClick={() => setShowCloseFriends(false)}>{tr("Done")}</button>
+              </div>
             </div>}
           </div>
         ) : tab === "Friends" ? (
@@ -3023,6 +3063,11 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
         .cx-shell[data-theme="dark"] .status-compose-head { color:#f0edff; }
         .cx-shell[data-theme="dark"] .status-topbar p,
         .cx-shell[data-theme="dark"] .status-empty { color:#aaa4bd; }
+        .status-top-actions{display:flex;align-items:center;gap:8px}
+        .close-friend-option{display:flex;align-items:center;gap:12px}
+        .close-friend-person{display:flex;align-items:center;gap:10px}
+        .close-friend-person img,.close-friend-person .avatar{width:36px;height:36px;border-radius:50%;object-fit:cover}
+        .close-friends-compose{max-height:min(80vh,680px);overflow:auto}
         .cx-shell[data-theme="dark"] .status-compose { background:#1b1a28;border-color:#39364d;color:#eeeaf8; }
         .cx-shell[data-theme="dark"] .status-viewer-content { background:#09070d;color:white; }
         .cx-shell[data-theme="dark"] .voice-preview { background:#29283a; }
