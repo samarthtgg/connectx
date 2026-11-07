@@ -688,6 +688,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     if (current < 0 || next < 0 || next >= statusUserOrder.length) return;
     setViewingStatusUser(statusUserOrder[next]);
     setViewingStatusIndex(0);
+    setShowStatusViewers(false);
     setStatusReply("");
   }
   function handleStatusTouchStart(event: TouchEvent<HTMLDivElement>) {
@@ -703,7 +704,13 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     const touch = event.changedTouches[0];
     if (!touch) return;
     const deltaY = startY === null ? 0 : touch.clientY - startY;
-    if (deltaY < -55 && viewingStatusUser === userId) { setShowStatusViewers(true); return; }
+    if (deltaY < -55 && viewingStatusUser === userId) {
+      setShowStatusViewers(true);
+      const ownStatus = viewingStatuses[viewingStatusIndex];
+      if (ownStatus) void supabase.from("status_views").select("viewer_id,viewed_at").eq("status_id", ownStatus.id).order("viewed_at", { ascending: false })
+        .then(({data,error}) => { if (error) setError(error.message); else setStatusViews((data ?? []) as { viewer_id: string; viewed_at: string }[]); });
+      return;
+    }
     if (deltaY > 65 && showStatusViewers) { setShowStatusViewers(false); return; }
     if (startX === null) return;
     const deltaX = touch.clientX - startX;
@@ -2469,7 +2476,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                 {statusGroups.map(({profileId,latest,count}) => {
                   const profile = profiles.find((p) => p.id === profileId);
                   const name = profile ? displayName(profile) : "ConnectX friend";
-                  return <button type="button" className="status-person" key={profileId} onClick={() => { setViewingStatusUser(profileId); setViewingStatusIndex(0); }}>
+                  return <button type="button" className="status-person" key={profileId} onClick={() => { setShowStatusViewers(false); setViewingStatusUser(profileId); setViewingStatusIndex(0); }}>
                     <span className="status-avatar-wrap unread"><span className="status-avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : initials(name)}</span></span>
                     <span className="status-person-copy"><strong>{name}</strong><small>{new Date(latest.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{count > 1 ? ` · ${count} updates` : ""}</small></span>
                     <span className="status-kind">{latest.media_type === "video" ? "Video" : latest.media_type === "image" ? "Photo" : "Text"}</span>
