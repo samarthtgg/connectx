@@ -202,6 +202,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   }, [darkMode, themeLoaded]);
 
   const [userId, setUserId] = useState("");
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(() => new Set());
   const [myProfile, setMyProfile] = useState<Profile | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
@@ -211,6 +212,42 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+
+  // Publish this session and mirror Supabase Realtime Presence for live online dots.
+  useEffect(() => {
+    if (!userId) {
+      setOnlineUserIds(new Set());
+      return;
+    }
+    const channel = supabase.channel("connectx-presence", {
+      config: { presence: { key: userId } },
+    });
+    const syncOnlineUsers = () => {
+      const state = channel.presenceState() as Record<string, Array<{ user_id?: string }>>;
+      const onlineIds = new Set<string>();
+      Object.values(state).forEach((metas) => metas.forEach((meta) => {
+        if (meta.user_id) onlineIds.add(meta.user_id);
+      }));
+      setOnlineUserIds(onlineIds);
+    };
+    const trackPresence = async () => {
+      await channel.track({ user_id: userId, online_at: new Date().toISOString() });
+    };
+    channel
+      .on("presence", { event: "sync" }, syncOnlineUsers)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") void trackPresence();
+      });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void trackPresence();
+      else void channel.untrack();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [profilesLoadAttempted, setProfilesLoadAttempted] = useState(false);
@@ -2439,7 +2476,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
               const outgoingPending = relation?.status === "pending" && relation.sender_id === userId;
               const incomingPending = relation?.status === "pending" && relation.receiver_id === userId;
               return <div className="person-row" key={profile.id}>
-                {profile.avatar_url ? <img className="avatar" src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}
+                <span className="presence-avatar-wrap">{profile.avatar_url ? <img className="avatar" src={profile.avatar_url} alt="" /> : <span className="avatar">{initials(displayName(profile))}</span>}{onlineUserIds.has(profile.id) && <span className="presence-online-dot" aria-label="Online" title="Online" />}</span>
                 <span className="chat-info"><strong>{displayName(profile)}</strong><small>{profile.username ? `@${profile.username}` : "ConnectX member"}{profile.is_private ? " · Private" : " · Public"}{isFriend ? " · Friend" : ""}</small></span>
                 {!isSelf && !isFriend && !relation && <button className="mini-btn muted-btn" disabled={busy} onClick={() => void sendRequest(profile)}><span className={busy ? "request-send-spinner" : ""}>{busy ? "Sending…" : "Add friend"}</span></button>}
                 {!isSelf && outgoingPending && <button className="mini-btn request-pending-btn" disabled><span className="request-pending-icon" aria-hidden="true">✓</span><span>Pending</span><i className="request-pending-ripple" aria-hidden="true" /></button>}
@@ -2497,7 +2534,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                 onTouchStart={() => beginLongPress(friend.id)} onTouchEnd={endLongPress} onTouchMove={endLongPress}
                 onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
                 onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } setChatActionMenuId(null); chooseFriend(friend); }}>
-                {friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}
+                 <span className="presence-avatar-wrap">{friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}{onlineUserIds.has(friend.id) && <span className="presence-online-dot" aria-label="Online" title="Online" />}</span>
                 <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{recentChat?.preview || (friend.username ? `@${friend.username}` : tr("Tap to open chat"))}{preference?.unread_at ? " · " + tr("Unread") : ""}</small></span>
               </button>
               {chatActionMenuId === friend.id && <div className="chat-row-tools">
@@ -2542,7 +2579,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
             <button type="button" className="profile-open-avatar" aria-label={"View " + activeName + "'s profile"} onClick={() => void openFriendProfile()}>
-              {selectedFriend.avatar_url ? <img className="avatar chat-header-avatar" src={selectedFriend.avatar_url} alt="" /> : <span className="avatar chat-header-avatar">{initials(activeName)}</span>}
+               <span className="presence-avatar-wrap">{selectedFriend.avatar_url ? <img className="avatar chat-header-avatar" src={selectedFriend.avatar_url} alt="" /> : <span className="avatar chat-header-avatar">{initials(activeName)}</span>}{onlineUserIds.has(selectedFriend.id) && <span className="presence-online-dot" aria-label="Online" title="Online" />}</span>
             </button>
             <button type="button" className="person profile-open-name" onClick={() => void openFriendProfile()} aria-label={"View " + activeName + "'s profile"}><strong>{activeName}</strong><small>View profile</small></button>
             <div className="call-actions">
@@ -2647,7 +2684,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
           <header className="friend-profile-topbar"><button type="button" onClick={() => setFriendProfile(null)} aria-label="Close contact info">‹</button><strong>Contact info</strong><span /></header>
           <div className="friend-profile-identity">
             <button type="button" className="friend-profile-avatar" onClick={() => friendProfile.avatar_url && setPhotoViewer({url:friendProfile.avatar_url,name:displayName(friendProfile)})} aria-label="View profile photo">
-              {friendProfile.avatar_url ? <img src={friendProfile.avatar_url} alt={displayName(friendProfile) + " profile photo"} /> : <span>{initials(displayName(friendProfile))}</span>}
+               {friendProfile.avatar_url ? <img src={friendProfile.avatar_url} alt={displayName(friendProfile) + " profile photo"} /> : <span>{initials(displayName(friendProfile))}</span>}{onlineUserIds.has(friendProfile.id) && <span className="presence-online-dot profile-presence-dot" aria-label="Online" title="Online" /> }
             </button>
             <h2>{displayName(friendProfile)}</h2>
             {friendProfile.username && <p className="friend-profile-username">@{friendProfile.username}</p>}
@@ -2995,6 +3032,12 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
         .cx-shell[data-theme="dark"] .group-row { background:#20202d; }
         @media(max-width:700px) { .profile-modal-backdrop { display:block;padding:0;background:#101018;backdrop-filter:none; }.friend-profile-card { width:100%;height:100dvh;max-height:100dvh;border:0;border-radius:0; }.friend-profile-identity { padding-top:38px; }.cx-rail { width:54px; }.cx-list { width:calc(100% - 54px);min-width:0; }.cx-conversation { display:none; }.cx-conversation.show-mobile { display:flex;position:absolute;inset:0 0 0 54px;z-index:2; }.cx-list.hide-mobile { display:none; }.back-btn { display:block; }.conversation-head { padding:0 12px;gap:9px; }.composer { padding:12px; }.messages-area { padding:20px 14px; } }
         .header-profile img { width:100%;height:100%;object-fit:cover;border-radius:50%; }
+        .presence-avatar-wrap{position:relative;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:46px;height:46px}
+        .presence-avatar-wrap .avatar{display:grid;place-items:center}
+        .presence-online-dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border:2px solid #fff;border-radius:50%;background:#22c55e;box-shadow:0 0 0 1px #16a34a}
+        .profile-presence-dot{right:7px;bottom:7px;width:13px;height:13px;border-color:#151f33}
+        .friend-profile-avatar{position:relative}
+        .friend-profile-avatar .profile-presence-dot{right:3px;bottom:3px}
         .chat-row-photo { object-fit:cover;cursor:zoom-in; }.chat-header-avatar { object-fit:cover; }
         .photo-viewer { position:fixed;z-index:60;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#080711d9; }
         .photo-viewer-card { position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;max-width:min(90vw,440px);max-height:90vh;color:#fff; }
@@ -3299,7 +3342,6 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
           .cx-list .intelligence-orb{width:32px;height:32px;font-size:18px;background:#31cbb8;color:#172a37;box-shadow:none}
           .cx-list .intelligence-launcher-label{font-size:12px;font-weight:600}
           .cx-list .header-profile{position:relative;width:43px;height:43px;flex:0 0 43px;border:2px solid #a68cff;border-radius:50%;background:#8068e8;color:#fff;font-size:17px;box-shadow:0 0 0 2px #11111a}
-          .cx-list .header-profile::after{content:"";position:absolute;width:10px;height:10px;right:-1px;bottom:0;border:2px solid #11111a;border-radius:50%;background:#32d6a1}
           .cx-list .header-profile img{width:100%;height:100%;object-fit:cover;border-radius:50%}
           .cx-list .search-row{position:sticky;top:74px;z-index:39;padding:7px 14px 8px;gap:0;margin:0;background:#11111a}
           .cx-list .search-row .search-box{height:46px;min-width:0;width:100%;flex:1;margin:0;padding:4px 5px 4px 13px;gap:8px;align-items:center;border:1px solid #37334e;border-radius:25px;background:#202033;color:#a49bbf;box-shadow:none}
