@@ -57,7 +57,7 @@ type DirectMessage = {
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; audience?:"friends"|"close_friends"; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null };
-type RecentChat = { profile: Profile; preview: string; lastMessageAt: string };
+type RecentChat = { profile: Profile; preview: string; lastMessageAt: string; unreadCount: number };
 type ChatGroup = { id: string; name: string; description: string | null; avatar_url: string | null; created_by: string; created_at: string; my_role?: string };
 type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean; reply_to_id?: string | null; reply_to_content?: string | null; reply_to_sender_id?: string | null };
 
@@ -1140,18 +1140,21 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const loadRecentChats = useCallback(async () => {
     if (!userId) return;
     const { data, error: messageError } = await supabase.from("messages")
-      .select("sender_id,receiver_id,content,created_at,message_type")
+      .select("sender_id,receiver_id,content,created_at,message_type,read_at")
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order("created_at", { ascending: false }).limit(500);
     if (messageError) throw messageError;
 
     const latestByContact = new Map<string, { preview: string; created_at: string }>();
+    const unreadCounts = new Map<string, number>();
     for (const row of data ?? []) {
       const contactId = row.sender_id === userId ? row.receiver_id : row.sender_id;
-      if (!contactId || contactId === userId || latestByContact.has(contactId)) continue;
+      if (!contactId || contactId === userId) continue;
       const preference = chatPreferences.find((item) => item.friend_id === contactId);
       if (preference?.hidden_at || preference?.is_archived) continue;
       if (preference?.cleared_at && new Date(row.created_at).getTime() <= new Date(preference.cleared_at).getTime()) continue;
+      if (row.receiver_id === userId && !row.read_at) unreadCounts.set(contactId, (unreadCounts.get(contactId) ?? 0) + 1);
+      if (latestByContact.has(contactId)) continue;
       const preview = row.message_type === "voice" ? "🎙 Voice message"
         : row.message_type === "image" ? "📷 Photo"
         : row.message_type === "video" ? "🎬 Video"
@@ -1173,6 +1176,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
       profile: profileById.get(id) ?? { id, username: null, full_name: null, avatar_url: null },
       preview: latestByContact.get(id)?.preview ?? "Message",
       lastMessageAt: latestByContact.get(id)?.created_at ?? "",
+      unreadCount: unreadCounts.get(id) ?? 0,
     })));
   }, [userId, chatPreferences]);
 
@@ -1238,7 +1242,8 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     if (requestId !== messageLoadRequestRef.current) return;
     await supabase.from("messages").update({ read_at: new Date().toISOString() })
       .eq("sender_id", friendId).eq("receiver_id", userId).is("read_at", null);
-  }, [userId, chatPreferences]);
+    await loadRecentChats();
+  }, [userId, chatPreferences, loadRecentChats]);
 
   useEffect(() => {
     if (!userId || !selectedFriend) {
@@ -2638,6 +2643,10 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                 onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } setChatActionMenuId(null); chooseFriend(friend); }}>
                  <span className="presence-avatar-wrap">{friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}{onlineUserIds.has(friend.id) && <span className="presence-online-dot" aria-label="Online" title="Online" />}</span>
                 <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{recentChat?.preview || (friend.username ? `@${friend.username}` : tr("Tap to open chat"))}{preference?.unread_at ? " · " + tr("Unread") : ""}</small></span>
+                <span className="chat-row-meta">
+                  {recentChat?.lastMessageAt && <time>{timeLabel(recentChat.lastMessageAt)}</time>}
+                  {!!recentChat?.unreadCount && <span className="unread-count-badge" aria-label={`${recentChat.unreadCount} unread messages`}>{recentChat.unreadCount > 99 ? "99+" : recentChat.unreadCount}</span>}
+                </span>
               </button>
               {chatActionMenuId === friend.id && <div className="chat-row-tools">
                 <button type="button" className="text-btn" onClick={() => { toggleChatLock("friend:" + friend.id); setChatActionMenuId(null); }}>{chatLockIds.includes("friend:" + friend.id) ? tr("Unlock") : tr("Chat Lock")}</button>
@@ -2720,7 +2729,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
               return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "") + (message.id.startsWith("optimistic-") ? " message-sending" : "")} onClick={() => { if (messageSelectionMode) toggleMessageSelection(message.id); }} onTouchStart={(e) => { if (!messageSelectionMode) startReplySwipe(e, message, "direct"); }} onTouchEnd={(e) => { if (!messageSelectionMode) finishReplySwipe(e, message, "direct"); }}>
                 <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_content.startsWith("STATUS_REPLY|") ? "Replied to your status" : message.reply_to_content.startsWith("STATUS_REACTION|") ? "Reacted to your status" : message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content.replace(/^STATUS_(?:REPLY|REACTION)\|/, "")}</span></div>}{message.message_type === "voice" ? <VoiceMessagePlayer src={message.content} mine={mine} /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : (editingMessageId === message.id && mine ? null : <p>{message.content}</p>)}
                   {editingMessageId === message.id && mine && message.message_type === "text" && <div className="message-edit-inline"><textarea rows={3} maxLength={5000} value={editMessageDraft} onChange={(event) => setEditMessageDraft(event.target.value)} aria-label="Edit message" /><div><button type="button" disabled={!editMessageDraft.trim() || editMessageBusy} onClick={() => void saveEditedMessage(message)}>{editMessageBusy ? "Saving…" : "Save"}</button><button type="button" onClick={() => { setEditingMessageId(null); setEditMessageDraft(""); }}>Cancel</button></div></div>}
-                  <small>{message.edited_at ? "Edited · " : ""}{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
+                  <small className="message-time">{message.edited_at ? "Edited · " : ""}{timeLabel(message.created_at)} {mine ? (message.read_at ? <span className="read-ticks">✓✓</span> : "✓") : ""}</small>
                   {reactions.filter((item) => item.message_id === message.id).map((item) => <button key={item.id} className="reaction-chip" onClick={() => toggleReaction(message.id, item.emoji)}>{item.emoji}{item.user_id === userId ? " · you" : ""}</button>)}
                   {reactionMessage === message.id && <div className="reaction-picker">{["👍","❤️","😂","😮","😢","🔥"].map((emoji) => <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}>{emoji}</button>)}</div>}
                   <button className="react-trigger" onClick={() => setReactionMessage(reactionMessage === message.id ? null : message.id)} aria-label="React to message">☺</button>
@@ -2960,6 +2969,12 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
         .chat-row-wrap { border-bottom:1px solid var(--border,rgba(128,128,128,.16));padding:3px 0 7px; }.chat-row-wrap .chat-row { width:100%;margin-bottom:2px; }.chat-row-tools { display:flex;gap:8px;padding-left:54px;flex-wrap:wrap; }.text-btn { border:0;background:transparent;color:var(--muted,#8b91a5);font-size:11px;padding:4px 2px;cursor:pointer; }.text-btn:hover { color:var(--foreground,#fff); }
         .avatar { width:43px;height:43px;flex-shrink:0;display:grid;place-items:center;border-radius:50%;background:#6257a8;font-size:12px;font-weight:800;color:white; }
         .chat-info { flex:1;min-width:0;display:flex;flex-direction:column;gap:5px; }.chat-info strong,.person strong { font-size:13px; }.chat-info small { color:#8b96ad;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+         .chat-row-meta{min-width:36px;align-self:stretch;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:7px;margin-left:3px}
+         .chat-row-meta time{color:#8995aa;font-size:10px;white-space:nowrap}
+         .unread-count-badge{min-width:19px;height:19px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:#20c66b;color:#fff;font-size:10px;font-weight:800;line-height:1}
+         .bubble .message-time{display:block;text-align:right;color:#d2ccef;font-size:10px;margin-top:6px;white-space:nowrap}
+         .bubble:not(.mine-bubble) .message-time{color:#827b91}
+
         .empty { color:#8994ad;text-align:center;font-size:12px;padding:20px;line-height:1.5; }
         .profile-row { display:flex;align-items:center;gap:10px;padding:16px;border-top:1px solid #263149; }.profile-avatar { width:35px;height:35px;font-size:11px; }.profile-row strong,.profile-row small { display:block;font-size:11px; }.profile-row small { color:#8290a9;margin-top:4px; }.online-dot { margin-left:auto;color:#55c69a;font-size:11px; }
         .cx-conversation { flex:1;min-width:0;display:flex;flex-direction:column;background:#0d1423; }.conversation-head { height:78px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid #232d42;background:#121a2b; }
