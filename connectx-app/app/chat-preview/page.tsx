@@ -435,6 +435,9 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     if (mainTabOrder[next] === "Messages") void loadGroups().catch((error) => setError(error.message));
   }
   const [statuses,setStatuses]=useState<StatusUpdate[]>([]);
+  const [statusViews, setStatusViews] = useState<{ viewer_id: string; viewed_at: string }[]>([]);
+  const [showStatusViewers, setShowStatusViewers] = useState(false);
+  const [showStatusAudienceMenu, setShowStatusAudienceMenu] = useState(false);
   const [closeFriendIds, setCloseFriendIds] = useState<Set<string>>(() => new Set());
   const [showCloseFriends, setShowCloseFriends] = useState(false);
   const [statusAudience, setStatusAudience] = useState<"friends" | "close_friends">("friends");
@@ -677,6 +680,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const viewingStatuses = useMemo(() => statuses.filter((status) => status.user_id === viewingStatusUser).sort((a,b) => new Date(a.created_at).getTime()-new Date(b.created_at).getTime()), [statuses, viewingStatusUser]);
   const statusUserOrder = useMemo(() => [...(myStatuses.length ? [userId] : []), ...statusGroups.map(group => group.profileId)], [myStatuses.length, userId, statusGroups]);
   const statusTouchStartX = useRef<number | null>(null);
+  const statusTouchStartY = useRef<number | null>(null);
   function moveStatusUser(direction: -1 | 1) {
     if (!viewingStatusUser) return;
     const current = statusUserOrder.indexOf(viewingStatusUser);
@@ -689,16 +693,22 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   function handleStatusTouchStart(event: TouchEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("button,input,textarea,a")) return;
     statusTouchStartX.current = event.touches[0]?.clientX ?? null;
+    statusTouchStartY.current = event.touches[0]?.clientY ?? null;
   }
   function handleStatusTouchEnd(event: TouchEvent<HTMLDivElement>) {
-    const start = statusTouchStartX.current;
+    const startX = statusTouchStartX.current;
+    const startY = statusTouchStartY.current;
     statusTouchStartX.current = null;
-    if (start === null) return;
+    statusTouchStartY.current = null;
     const touch = event.changedTouches[0];
     if (!touch) return;
-    const delta = touch.clientX - start;
-    if (Math.abs(delta) < 65) return;
-    moveStatusUser(delta < 0 ? 1 : -1);
+    const deltaY = startY === null ? 0 : touch.clientY - startY;
+    if (deltaY < -55 && viewingStatusUser === userId) { setShowStatusViewers(true); return; }
+    if (deltaY > 65 && showStatusViewers) { setShowStatusViewers(false); return; }
+    if (startX === null) return;
+    const deltaX = touch.clientX - startX;
+    if (Math.abs(deltaX) < 65 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+    moveStatusUser(deltaX < 0 ? 1 : -1);
   }
   useEffect(() => {
     if (tab !== "Friends") { setUsernameSearchProfile(null); return; }
@@ -1610,14 +1620,30 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
 
   const activeViewedStatus = viewingStatuses[viewingStatusIndex] ?? null;
   useEffect(() => {
-    if (!activeViewedStatus) { setStatusReactions([]); return; }
+    if (!activeViewedStatus || !userId) {
+      setStatusReactions([]);
+      setStatusViews([]);
+      return;
+    }
     let cancelled = false;
     void supabase.from("status_reactions").select("id,status_id,user_id,emoji").eq("status_id", activeViewedStatus.id).then(({data,error}) => {
       if (cancelled) return;
       if (error) setError(error.message); else setStatusReactions(data ?? []);
     });
+    if (activeViewedStatus.user_id === userId) {
+      void supabase.from("status_views").select("viewer_id,viewed_at").eq("status_id", activeViewedStatus.id).order("viewed_at", { ascending: false }).then(({data,error}) => {
+        if (cancelled) return;
+        if (error) setError(error.message); else setStatusViews((data ?? []) as { viewer_id: string; viewed_at: string }[]);
+      });
+    } else {
+      setStatusViews([]);
+      void supabase.from("status_views").upsert(
+        { status_id: activeViewedStatus.id, viewer_id: userId },
+        { onConflict: "status_id,viewer_id", ignoreDuplicates: true }
+      ).then(({error}) => { if (error && !cancelled) setError(error.message); });
+    }
     return () => { cancelled = true; };
-  }, [activeViewedStatus?.id]);
+  }, [activeViewedStatus?.id, activeViewedStatus?.user_id, userId]);
 
   async function reactToStatus(emoji: string) {
     if (!userId || !activeViewedStatus || activeViewedStatus.user_id === userId) return;
