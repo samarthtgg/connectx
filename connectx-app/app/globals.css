@@ -590,3 +590,17 @@ body {
           @keyframes connectx-refresh-spin{to{transform:rotate(360deg)}}
         }
       
+
+/* Long-press contextual message menu */
+.cx-message-action-menu{position:relative;z-index:30;display:flex;flex-direction:column;width:min(246px,calc(100vw - 64px));margin:12px 0 0 auto;padding:9px 10px;border:1px solid #39344f;border-radius:17px;background:#1d1b2d;color:#eeeafc;box-shadow:0 16px 42px #11182755,0 4px 12px #0003;overflow:hidden;animation:cx-action-menu-in 150ms ease-out both;}
+.cx-message-reactions{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:1px 2px 10px;margin-bottom:5px;border-bottom:1px solid #39344f;}
+.cx-message-reactions button{display:grid;place-items:center;width:36px;height:38px;padding:0;border:0;border-radius:10px;background:transparent;color:inherit;font-size:23px;line-height:1;transition:background .15s,transform .15s;}
+.cx-message-reactions button:active{background:#39344f;transform:scale(1.12);}
+.cx-message-action{display:flex;align-items:center;gap:13px;width:100%;min-height:49px;padding:0 12px;border:0;border-radius:9px;background:transparent;color:#eeeafc;text-align:left;font-size:15px;font-weight:500;}
+.cx-message-action:active{background:#343149;}
+.cx-action-icon{display:grid;place-items:center;width:23px;flex:0 0 23px;color:#a995ff;font-size:23px;line-height:1;font-weight:500;}
+.cx-action-divider{height:1px;margin:5px 0;background:#39344f;}
+.cx-message-action.danger{color:#ff7d8e;}
+.cx-message-action.danger .cx-action-icon{color:#ff7d8e;}
+@keyframes cx-action-menu-in{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:700px){.cx-message-action-menu{width:min(246px,calc(100vw - 52px));padding:8px 9px;border-radius:16px}.cx-message-action{min-height:47px;font-size:15px}}
