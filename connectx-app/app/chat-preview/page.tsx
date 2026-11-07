@@ -2456,7 +2456,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
           <div className="cx-chats status-panel">
 <div className="status-topbar"><div><h2>{tr("Updates")}</h2><p>{tr("Share what’s happening")}</p></div><div className="status-top-actions"><button type="button" className="mini-btn" onClick={() => setShowCloseFriends(true)}>☆ {tr("Close Friends")} · {closeFriendIds.size}</button><button type="button" className="status-camera" onClick={() => { setStatusAudience("friends"); setShowStatusComposer(true); }} aria-label="Add status">＋</button></div></div>
             <div className="status-list">
-              <button type="button" className="status-person my-status-row" onClick={() => myStatuses.length ? (setViewingStatusUser(userId),setViewingStatusIndex(Math.max(0,myStatuses.length-1))) : setShowStatusComposer(true)}>
+              <button type="button" className="status-person my-status-row" onClick={() => { setShowStatusViewers(false); myStatuses.length ? (setViewingStatusUser(userId),setViewingStatusIndex(Math.max(0,myStatuses.length-1))) : setShowStatusComposer(true); }}>
                 <span className="status-avatar-wrap own"><span className="status-avatar">{myProfile?.avatar_url ? <img src={myProfile.avatar_url} alt="" /> : initials(displayName(myProfile ?? {id:userId,username:null,full_name:"You",avatar_url:null}))}</span><i>＋</i></span>
                 <span className="status-person-copy"><strong>{tr("My status")}</strong><small>{myStatuses.length ? "Tap to add another update" : "Tap to add status update"}</small></span>
                 <span className="status-add-label">{tr("Add")}</span>
@@ -2493,13 +2493,32 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                 </div>
                 {viewingStatuses[viewingStatusIndex].media_type!=="text" && viewingStatuses[viewingStatusIndex].caption && <div className="status-viewer-caption">{viewingStatuses[viewingStatusIndex].caption}</div>}
                 {viewingStatusUser !== userId && <div className="status-interaction-bar" onClick={e => e.stopPropagation()}>
+                  <button type="button" className={"status-like-button " + (statusReactions.some(item => item.user_id === userId && item.emoji === "❤️") ? "selected" : "")} onClick={() => void reactToStatus("❤️")} aria-label="Like status">
+                    {statusReactions.some(item => item.user_id === userId && item.emoji === "❤️") ? "❤️ Liked" : "♡ Like"}
+                  </button>
                   <div className="status-emoji-bar" aria-label="React to status">
-                    {["❤️","😂","😮","😢","🙏","🔥","👏","👍"].map(emoji => <button type="button" key={emoji} className={statusReactions.some(item => item.user_id === userId && item.emoji === emoji) ? "selected" : ""} onClick={() => void reactToStatus(emoji)} aria-label={"React "+emoji}>{emoji}</button>)}
+                    {["😂","😮","😢","🙏","🔥","👏","👍"].map(emoji => <button type="button" key={emoji} className={statusReactions.some(item => item.user_id === userId && item.emoji === emoji) ? "selected" : ""} onClick={() => void reactToStatus(emoji)} aria-label={"React "+emoji}>{emoji}</button>)}
                   </div>
                   <form className="status-reply-form" onSubmit={sendStatusReply}>
                     <input value={statusReply} onChange={e => setStatusReply(e.target.value)} placeholder="Reply to status…" maxLength={1000} aria-label="Reply to status" />
                     <button type="submit" disabled={!statusReply.trim() || statusReplyBusy} aria-label="Send status reply">{statusReplyBusy ? "…" : "➤"}</button>
                   </form>
+                </div>}
+                {viewingStatusUser === userId && <button type="button" className="status-own-viewer-hint" onClick={() => setShowStatusViewers(true)}>↑ {statusViews.length} views · Swipe up</button>}
+                {showStatusViewers && viewingStatusUser === userId && <div className="status-viewers-backdrop" onClick={() => setShowStatusViewers(false)}>
+                  <section className="status-viewers-sheet" onClick={e => e.stopPropagation()}>
+                    <div className="status-viewers-grabber" />
+                    <div className="status-compose-head"><strong>{statusViews.length} views</strong><button type="button" onClick={() => setShowStatusViewers(false)} aria-label="Close viewers">×</button></div>
+                    {statusViews.length === 0 ? <p className="profile-hint">No views yet. Viewers will appear here.</p> : statusViews.map(view => {
+                      const viewer = profiles.find(profile => profile.id === view.viewer_id);
+                      const viewerName = viewer ? displayName(viewer) : "ConnectX user";
+                      return <div className="status-viewer-row" key={view.viewer_id}>
+                        <span className="status-viewer-avatar">{viewer?.avatar_url ? <img src={viewer.avatar_url} alt="" /> : initials(viewerName)}</span>
+                        <strong>{viewerName}</strong>
+                        <small>{new Date(view.viewed_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</small>
+                      </div>;
+                    })}
+                  </section>
                 </div>}
                 <div className="status-viewer-nav">
                   <button type="button" disabled={viewingStatusIndex===0} onClick={() => setViewingStatusIndex(i=>Math.max(0,i-1))}>‹</button>
@@ -2509,9 +2528,19 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             </div>}
             {showStatusComposer && <div className="status-modal-backdrop" onClick={() => setShowStatusComposer(false)}>
               <form className="status-compose" onSubmit={publishStatus} onClick={e => e.stopPropagation()}>
-                <div className="status-compose-head"><strong>New status</strong><button type="button" onClick={() => setShowStatusComposer(false)} aria-label="Close">×</button></div>
+                <div className="status-compose-head"><strong>New status</strong><div className="status-compose-head-actions">
+                  <div className="status-audience-menu-wrap">
+                    <button type="button" className="status-more-button" aria-label="Status audience options" onClick={() => setShowStatusAudienceMenu(value => !value)}>⋮</button>
+                    {showStatusAudienceMenu && <div className="status-audience-menu">
+                      <button type="button" onClick={() => { setStatusAudience("friends"); setShowStatusAudienceMenu(false); }}>◎ Share with all friends</button>
+                      <button type="button" onClick={() => { setStatusAudience("close_friends"); setShowStatusAudienceMenu(false); }}>☆ Share with Close Friends</button>
+                      <button type="button" onClick={() => { setShowCloseFriends(true); setShowStatusAudienceMenu(false); }}>Manage Close Friends…</button>
+                    </div>}
+                  </div>
+                  <button type="button" onClick={() => { setShowStatusComposer(false); setShowStatusAudienceMenu(false); }} aria-label="Close">×</button>
+                </div></div>
                 <textarea value={statusCaption} onChange={e=>setStatusCaption(e.target.value)} maxLength={700} placeholder="What’s on your mind?" />
-                <label className="profile-field">{tr("Share with")}<select value={statusAudience} onChange={e => setStatusAudience(e.target.value as "friends" | "close_friends")}><option value="friends">{tr("All friends")}</option><option value="close_friends">{tr("Close Friends only")} ({closeFriendIds.size})</option></select></label>
+                <div className="status-audience-current">Sharing with: <strong>{statusAudience === "close_friends" ? "☆ Close Friends (" + closeFriendIds.size + ")" : "All friends"}</strong></div>
                 {statusAudience === "close_friends" && closeFriendIds.size === 0 && <small className="profile-hint">{tr("Add people to Close Friends before sharing to this audience.")}</small>}
                 <label className="status-file">＋ Add photo or video<input ref={statusInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={e=>setStatusFile(e.target.files?.[0]??null)} /></label>
                 {statusFile && <small>{statusFile.name} · {(statusFile.size/1024/1024).toFixed(1)} MB</small>}
