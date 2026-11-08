@@ -110,10 +110,10 @@ export default function ConnectXPuppy() {
   useEffect(() => {
     try {
       const hidden = localStorage.getItem("cx-puppy-hidden-v1");
-      const savedColor = Number(localStorage.getItem("cx-puppy-color-v1") ?? 2);
       const savedPosition = localStorage.getItem("cx-puppy-position-v1");
       setVisible(hidden !== "true");
-      setColorIndex(Number.isFinite(savedColor) ? ((savedColor % colors.length) + colors.length) % colors.length : 0);
+      setColorIndex(2);
+      localStorage.setItem("cx-puppy-color-v1", "2");
       if (savedPosition) {
         const parsed = JSON.parse(savedPosition);
         if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) setPosition(parsed);
