@@ -19,11 +19,13 @@ export default function ConnectXPuppy() {
   const [position, setPosition] = useState({ x: 22, y: 118 });
   const [listening, setListening] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [compact, setCompact] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const recognition = useRef<any>(null);
   const lastTap = useRef(0);
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moodTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shrinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showBubble = useCallback((message: string, duration = 2000) => {
     setBubble(message);
@@ -144,7 +146,7 @@ export default function ConnectXPuppy() {
             onPointerCancel={() => setDragging(false)}
             onDoubleClick={changeColor}
             onTouchEnd={() => { const now = Date.now(); if (now - lastTap.current < 330) changeColor(); lastTap.current = now; }}
-            className="relative h-[112px] w-[112px] cursor-grab active:cursor-grabbing"
+            onClick={() => { if (shrinkTimer.current) clearTimeout(shrinkTimer.current); setCompact(false); shrinkTimer.current = setTimeout(() => setCompact(true), 3000); }}\n            className={`relative cursor-grab active:cursor-grabbing transition-transform duration-700 ease-in-out ${compact ? "h-[76px] w-[76px]" : "h-[112px] w-[112px]"}`}
             style={{ touchAction: "none" }}
             aria-label="ConnectX puppy. Drag to move; double tap to change colour."
           >
@@ -181,12 +183,12 @@ export default function ConnectXPuppy() {
         </div>
       </div>}
       <style jsx global>{`
-        @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+        @keyframes cxPuppyBlink { 0%, 43%, 47%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.08); } }\n        @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes cxPuppyTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(20deg)} }
         @keyframes cxPuppyJump { 0%,100%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-42px) rotate(-9deg)} 70%{transform:translateY(-20px) rotate(7deg)} }
         @keyframes cxPuppyDance { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-15deg) translateY(-5px)} 75%{transform:rotate(15deg) translateY(-5px)} }
         @keyframes cxPuppyThink { to{transform:rotate(8deg)} }
-        .cx-puppy-idle{animation:cxPuppyBob 2.2s ease-in-out infinite;transform-origin:50% 90%}
+        .cx-puppy-idle{animation:cxPuppyBob 2.2s ease-in-out infinite;transform-origin:50% 90%}\n        .cx-puppy-blink{transform-box:fill-box;transform-origin:center;animation:cxPuppyBlink 4.2s infinite ease-in-out}
         .cx-puppy-tail{transform-origin:28px 70px;animation:cxPuppyTail .55s ease-in-out infinite}
         .cx-puppy-jump{animation:cxPuppyJump .7s ease-in-out 2}
         .cx-puppy-sleep{transform:rotate(12deg);opacity:.8}
