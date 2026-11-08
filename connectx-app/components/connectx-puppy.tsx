@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
-type Mood = "idle" | "jump" | "left" | "right" | "sleep" | "think" | "wave" | "dance";
+type Mood = "idle" | "jump" | "left" | "right" | "sleep" | "think" | "wave" | "dance" | "happy" | "sad" | "angry" | "cry" | "play";
 const colors = ["#9ca3af","#f3a6c8","#f59e0b","#facc15","#84cc16","#22c55e","#14b8a6","#06b6d4","#38bdf8","#60a5fa","#818cf8","#a78bfa","#c084fc","#e879f9","#fb7185","#f87171","#fb923c","#d6b38a","#64748b","#f8fafc"];
 
 export default function ConnectXPuppy() {
@@ -20,6 +20,8 @@ export default function ConnectXPuppy() {
   const [dragging, setDragging] = useState(false);
   const [compact, setCompact] = useState(false);
   const [eyesClosed, setEyesClosed] = useState(false);
+  const [lastInteraction, setLastInteraction] = useState(Date.now());
+  const [ballPlaying, setBallPlaying] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const recognition = useRef<any>(null);
   const lastTap = useRef(0);
@@ -146,13 +148,13 @@ export default function ConnectXPuppy() {
             <button onPointerDown={e => e.stopPropagation()} onClick={() => { setVisible(false); setMenuOpen(false); localStorage.setItem("cx-puppy-hidden-v1","true"); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-300 hover:bg-white/10">🙈 Hide puppy</button>
           </div>}
           <div
-            onPointerDown={(event) => { const rect = event.currentTarget.getBoundingClientRect(); dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }; setDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }}
+            onPointerDown={(event) => { interact(); const rect = event.currentTarget.getBoundingClientRect(); dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }; setDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }}
             onPointerMove={(event) => { if (dragging) moveTo(event.clientX, event.clientY); }}
             onPointerUp={() => setDragging(false)}
             onPointerCancel={() => setDragging(false)}
             onDoubleClick={changeColor}
             onTouchEnd={() => { const now = Date.now(); if (now - lastTap.current < 330) changeColor(); lastTap.current = now; }}
-            onClick={() => { if (shrinkTimer.current) clearTimeout(shrinkTimer.current); setCompact(false); shrinkTimer.current = setTimeout(() => setCompact(true), 3000); }}
+            onClick={() => { interact(); if (shrinkTimer.current) clearTimeout(shrinkTimer.current); setCompact(false); shrinkTimer.current = setTimeout(() => setCompact(true), 3000); }}
             className={`relative cursor-grab active:cursor-grabbing transition-transform duration-700 ease-in-out ${compact ? "h-[76px] w-[76px]" : "h-[112px] w-[112px]"}`}
             style={{ touchAction: "none" }}
             aria-label="ConnectX puppy. Drag to move; double tap to change colour."
@@ -164,13 +166,17 @@ export default function ConnectXPuppy() {
               <path d="M43 43 L35 16 Q34 5 46 15 L61 35 M76 35 L91 13 Q101 7 99 22 L91 49" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3" strokeLinejoin="round"/>
               <path d="M42 22 L46 36 L55 35Z M83 34 L94 20 L91 40Z" fill="#f9a8d4"/>
               <ellipse cx="65" cy="59" rx="29" ry="27" fill="#f1f5f9"/>
+              {mood === "angry" && <g><path d="M49 49 L60 53 M81 49 L70 53" stroke="#7f1d1d" strokeWidth="3.2" strokeLinecap="round"/></g>}
               {eyesClosed ? <g><path d="M50 56 Q55 52 60 56 M70 56 Q75 52 80 56" fill="none" stroke="#172033" strokeWidth="2.8" strokeLinecap="round"/></g> : <g><ellipse cx="55" cy="55" rx="4.2" ry="6" fill="#172033"/><ellipse cx="75" cy="55" rx="4.2" ry="6" fill="#172033"/><circle cx="56" cy="53" r="1.8" fill="white"/><circle cx="76" cy="53" r="1.8" fill="white"/></g>}
+              {(mood === "sad" || mood === "cry") && <g><path d="M50 57 Q55 61 60 57 M70 57 Q75 61 80 57" fill="none" stroke="#172033" strokeWidth="2.6" strokeLinecap="round"/><path d="M53 59 Q50 68 55 70 Q59 68 56 60 M76 59 Q73 68 78 70 Q82 68 79 60" fill="#38bdf8" opacity=".9"/></g>}
               <ellipse cx="45" cy="66" rx="6" ry="3" fill="#f9a8d4" opacity=".8"/><ellipse cx="85" cy="66" rx="6" ry="3" fill="#f9a8d4" opacity=".8"/>
-              <path d="M61 65 Q65 60 69 65 Q66 72 65 72Z" fill="#f472b6"/><path d="M65 72 Q59 78 54 73 M65 72 Q71 78 76 73" fill="none" stroke="#475569" strokeWidth="1.7" strokeLinecap="round"/>
+              <path d="M61 65 Q65 60 69 65 Q66 72 65 72Z" fill="#f472b6"/>
+              {mood === "happy" ? <path d="M53 72 Q65 86 77 72" fill="none" stroke="#475569" strokeWidth="2.4" strokeLinecap="round"/> : mood === "sad" || mood === "cry" ? <path d="M55 79 Q65 68 75 79" fill="none" stroke="#475569" strokeWidth="2.4" strokeLinecap="round"/> : mood === "angry" ? <path d="M56 78 Q65 70 74 78" fill="none" stroke="#475569" strokeWidth="2.4" strokeLinecap="round"/> : <path d="M65 72 Q59 78 54 73 M65 72 Q71 78 76 73" fill="none" stroke="#475569" strokeWidth="1.7" strokeLinecap="round"/>}
+              {ballPlaying && <g className="cx-puppy-ball"><circle cx="108" cy="91" r="9" fill="#fb923c" stroke="#fff" strokeWidth="1.5"/><path d="M100 87 Q108 91 116 87 M100 95 Q108 91 116 95" fill="none" stroke="#fff" strokeWidth="1.4"/></g>}
               <path d="M43 82 Q34 94 45 99 L56 99 Q63 94 55 84 M76 84 Q69 95 80 100 L91 99 Q98 93 87 81" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="2"/>
               {mood === "sleep" && <><path d="M49 56 Q55 60 60 56 M70 56 Q76 60 81 56" fill="none" stroke="#172033" strokeWidth="2"/><text x="94" y="17" fill="#c4b5fd" fontSize="15">Zz</text></>}
               {mood === "think" && <><circle cx="105" cy="23" r="3" fill="#c4b5fd"/><text x="99" y="15" fill="#c4b5fd" fontSize="13">?</text></>}
-              {mood === "wave" && <path d="M91 79 Q105 67 104 54" fill="none" stroke="#e2e8f0" strokeWidth="5" strokeLinecap="round"/>}
+              {mood === "cry" && <text x="94" y="17" fill="#60a5fa" fontSize="14">😭</text>}\n              {mood === "wave" && <path d="M91 79 Q105 67 104 54" fill="none" stroke="#e2e8f0" strokeWidth="5" strokeLinecap="round"/>}
             </svg>
             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
               <button aria-label="Puppy options" onPointerDown={e => e.stopPropagation()} onClick={() => setMenuOpen(v => !v)} className="rounded-full border border-white/15 bg-slate-950/95 px-3 py-1 text-sm text-white shadow-lg">•••</button>
@@ -179,7 +185,7 @@ export default function ConnectXPuppy() {
         </div>
       )}
       <style jsx global>{`
-        @keyframes cxPuppyBlink { 0%, 40%, 46%, 100% { transform: scaleY(1); } 43%, 44% { transform: scaleY(.06); } }
+        @keyframes cxPuppyBall { 0%{transform:translate(0,0) rotate(0)} 25%{transform:translate(15px,-18px) rotate(90deg)} 50%{transform:translate(25px,0) rotate(180deg)} 75%{transform:translate(10px,-12px) rotate(270deg)} 100%{transform:translate(0,0) rotate(360deg)} }\n        .cx-puppy-ball{transform-origin:108px 91px;animation:cxPuppyBall .65s ease-in-out infinite}\n        @keyframes cxPuppyBlink { 0%, 40%, 46%, 100% { transform: scaleY(1); } 43%, 44% { transform: scaleY(.06); } }
         @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes cxPuppyTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(20deg)} }
         @keyframes cxPuppyJump { 0%,100%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-42px) rotate(-9deg)} 70%{transform:translateY(-20px) rotate(7deg)} }
