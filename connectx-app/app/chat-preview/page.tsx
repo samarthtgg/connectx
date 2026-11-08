@@ -2548,6 +2548,12 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             <div className="settings-section-title"><span>05</span> {tr("Change language").toUpperCase()}</div>
             <label className="profile-field">{tr("Change language")}<select value={appLanguage} disabled={languageSaving} onChange={(event) => void changeAppLanguage(event.target.value)}>{APP_LANGUAGES.map(([code,label]) => <option key={code} value={code}>{label}</option>)}</select></label>
             <small className="profile-hint">{languageSaving ? tr("Saving language preference…") : tr("Choose your app language")}</small>
+            <div className="settings-section-title"><span>06</span> PUPPY</div>
+            <a href="/puppy-settings" className="privacy-option" style={{ display: "flex", alignItems: "center", gap: "14px", textDecoration: "none" }}>
+              <span style={{ fontSize: "28px" }} aria-hidden="true">🐾</span>
+              <span style={{ flex: 1 }}><strong>Puppy settings &amp; how to talk</strong><small>Learn how to talk to your puppy and see all voice commands.</small></span>
+              <span aria-hidden="true" style={{ fontSize: "22px" }}>›</span>
+            </a>
             <button className="action-btn" type="submit" disabled={savingProfile}>{savingProfile ? tr("Saving…") : tr("Save profile")}</button>
             <button className="action-btn secondary" type="button" onClick={signOut} disabled={busy || savingProfile}>{tr("Sign out")}</button>
             <div className="app-version-card" aria-label="Application version">
