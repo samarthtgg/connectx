@@ -25,6 +25,12 @@ export default function ConnectXPuppy() {
   const [ballPlaying, setBallPlaying] = useState(false);
   const [username, setUsername] = useState("friend");
   const [interactionCount, setInteractionCount] = useState(0);
+  const [injuredUntil, setInjuredUntil] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [injuryPreview, setInjuryPreview] = useState(false);
+  const fastMoveStrikes = useRef(0);
+  const dragStartedAt = useRef(0);
+  const dragStartPoint = useRef({ x: 0, y: 0 });
   const lastPointAt = useRef(0);
   const userId = useRef<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
@@ -49,6 +55,9 @@ export default function ConnectXPuppy() {
   }, [showBubble]);
 
   useEffect(() => {
+    const savedInjury = Number(localStorage.getItem("cx-puppy-injured-until-v1") || 0);
+    if (savedInjury > Date.now()) { setInjuredUntil(savedInjury); setRemainingSeconds(Math.ceil((savedInjury - Date.now()) / 1000)); setVisible(false); }
+    else localStorage.removeItem("cx-puppy-injured-until-v1");
     let active = true;
     supabase.auth.getUser().then(async ({ data }) => {
       if (!active || !data.user) return;
@@ -68,7 +77,14 @@ export default function ConnectXPuppy() {
     return () => { active = false; clearInterval(blinkTimer); };
   }, []);
 
+  useEffect(() => {
+    if (!injuredUntil) return;
+    const tick = () => { const left = Math.max(0, Math.ceil((injuredUntil - Date.now()) / 1000)); setRemainingSeconds(left); if (left === 0) { setInjuredUntil(0); localStorage.removeItem("cx-puppy-injured-until-v1"); setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); } };
+    tick(); const timer = window.setInterval(tick, 1000); return () => window.clearInterval(timer);
+  }, [injuredUntil]);
+
   const interact = useCallback(() => {
+    if (injuredUntil > Date.now()) return;
     setLastInteraction(Date.now());
     if (mood === "sad") setMood("idle");
     const now = Date.now();
@@ -84,7 +100,7 @@ export default function ConnectXPuppy() {
         return next;
       });
     }
-  }, [mood, showBubble, username]);
+  }, [mood, showBubble, username, injuredUntil]);
 
   useEffect(() => {
     if (!visible) return;
@@ -143,6 +159,7 @@ export default function ConnectXPuppy() {
   const levelProgress = interactionCount >= 150 ? 100 : Math.min(100, ((interactionCount - levelStart) / (nextLevelAt - levelStart)) * 100);
 
   const handleCommand = useCallback((spoken: string) => {
+    if (injuredUntil > Date.now()) return;
     const command = spoken.toLowerCase().trim();
     interact();
     if (/\b(happy|happier)\b/.test(command)) say("Yay! I'm so happy! 🥰", "happy");
@@ -166,7 +183,7 @@ export default function ConnectXPuppy() {
     else if (/(spin|turn around)/.test(command)) say("Wheee, round and round!", "dance");
     else if (/(hide)/.test(command)) { setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); }
     else say("Hmm? 🐾", "think");
-  }, [say, interactionCount, username, interact]);
+  }, [say, interactionCount, username, interact, injuredUntil]);
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -183,13 +200,34 @@ export default function ConnectXPuppy() {
     try { instance.start(); } catch { setListening(false); }
   };
 
+  const finishDrag = () => {
+    setDragging(false);
+    if (injuredUntil > Date.now()) return;
+    const elapsed = Math.max(1, Date.now() - dragStartedAt.current);
+    const distance = Math.hypot(position.x - dragStartPoint.current.x, position.y - dragStartPoint.current.y);
+    if (distance < 105 || distance / elapsed < 1.05) return;
+    fastMoveStrikes.current += 1;
+    if (fastMoveStrikes.current === 1) say('Wait, I am little! Please move me gently 🥺', 'sad');
+    else if (fastMoveStrikes.current === 2) say('Please do not do that! It hurts me 😟', 'cry');
+    else {
+      const until = Date.now() + 600000;
+      setInjuredUntil(until); setRemainingSeconds(600); setInjuryPreview(true); setMenuOpen(false);
+      recognition.current?.stop?.();
+      localStorage.setItem('cx-puppy-injured-until-v1', String(until));
+      showBubble('I am hurt... I need 10 minutes to recover. 🩹', 3800);
+      window.setTimeout(() => { setInjuryPreview(false); setVisible(false); localStorage.setItem('cx-puppy-hidden-v1', 'true'); }, 4000);
+    }
+  };
+
   const begin = () => {
+    if (injuredUntil > Date.now()) return;
     setVisible(true);
     localStorage.setItem("cx-puppy-hidden-v1", "false");
     setMood("wave");
   };
 
   const moveTo = (clientX: number, clientY: number) => {
+    if (injuredUntil > Date.now()) return;
     const x = Math.max(8, Math.min(window.innerWidth - 104, clientX - dragOffset.current.x));
     const y = Math.max(78, Math.min(window.innerHeight - 150, clientY - dragOffset.current.y));
     setPosition({ x, y });
@@ -203,7 +241,26 @@ export default function ConnectXPuppy() {
     say(`New colour ${next + 1} of 20! 🎨`, "wave");
   };
 
-  if (!visible) return <button type="button" onClick={() => { setVisible(true); localStorage.setItem("cx-puppy-hidden-v1","false"); showBubble("I'm back! 🐾", 2000); }} className="fixed bottom-24 right-4 z-[100] rounded-full border border-cyan-300/30 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-cyan-200 shadow-xl">Show puppy 🐾</button>;
+  if (injuryPreview) return (
+    <div className="fixed bottom-24 right-4 z-[110] flex w-64 flex-col items-center rounded-3xl border border-rose-300/30 bg-slate-950/95 p-4 text-center text-white shadow-2xl">
+      <svg viewBox="0 0 120 112" className="h-32 w-32">
+        <path d="M34 73 Q27 55 39 42 L48 27 Q54 17 63 36 Q76 23 86 36 L96 57 Q103 78 85 88 L43 88Z" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3"/>
+        <path d="M43 43 L35 16 Q34 5 46 15 L61 35 M76 35 L91 13 Q101 7 99 22 L91 49" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3"/>
+        <ellipse cx="65" cy="59" rx="29" ry="27" fill="#f1f5f9"/>
+        <path d="M47 46 L65 44 L66 60 L48 62Z" fill="#e5e7eb" stroke="#94a3b8" strokeWidth="2"/>
+        <path d="M47 50 L65 48 M48 56 L65 54" stroke="#94a3b8" strokeWidth="2"/>
+        <path d="M75 56 Q80 54 83 58" fill="none" stroke="#172033" strokeWidth="2.5"/>
+        <path d="M61 68 Q66 64 71 68" fill="none" stroke="#475569" strokeWidth="2.5"/>
+        <path d="M77 69 Q81 73 77 77 Q73 74 77 69Z" fill="#b91c1c"/>
+        <path d="M42 76 Q49 72 55 77" stroke="#b91c1c" strokeWidth="3" strokeLinecap="round"/>
+        <path d="M35 83 Q48 79 56 86" stroke="#f8fafc" strokeWidth="5" strokeLinecap="round"/>
+      </svg>
+      <p className="text-sm font-semibold text-rose-200">Puppy is hurt and resting 🩹</p>
+      <p className="mt-1 text-xs text-slate-300">Please be gentle. Recovery: 10 minutes.</p>
+    </div>
+  );
+
+  if (!visible) return <button type="button" disabled={injuredUntil > Date.now()} onClick={() => { if (injuredUntil > Date.now()) return; setVisible(true); localStorage.setItem("cx-puppy-hidden-v1","false"); showBubble("I am back! 🐾", 2000); }} className="fixed bottom-24 right-4 z-[100] rounded-full border border-cyan-300/30 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-cyan-200 shadow-xl disabled:cursor-not-allowed disabled:opacity-70">{injuredUntil > Date.now() ? "Puppy resting 🩹 " + Math.floor(remainingSeconds / 60) + ":" + String(remainingSeconds % 60).padStart(2, "0") : "Show puppy 🐾"}</button>;
 
   return (
     <>
@@ -217,13 +274,13 @@ export default function ConnectXPuppy() {
             <button onPointerDown={e => e.stopPropagation()} onClick={() => { setVisible(false); setMenuOpen(false); localStorage.setItem("cx-puppy-hidden-v1","true"); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-300 hover:bg-white/10">🙈 Hide</button>
           </div>}
           <div
-            onPointerDown={(event) => { interact(); const rect = event.currentTarget.getBoundingClientRect(); dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }; setDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }}
+            onPointerDown={(event) => { if (injuredUntil > Date.now()) return; interact(); const rect = event.currentTarget.getBoundingClientRect(); dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }; dragStartedAt.current = Date.now(); dragStartPoint.current = { x: position.x, y: position.y }; setDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }}
             onPointerMove={(event) => { if (dragging) moveTo(event.clientX, event.clientY); }}
-            onPointerUp={() => setDragging(false)}
-            onPointerCancel={() => setDragging(false)}
-            onDoubleClick={changeColor}
+            onPointerUp={finishDrag}
+            onPointerCancel={finishDrag}
+            onDoubleClick={() => { if (injuredUntil <= Date.now()) changeColor(); }}
             onTouchEnd={() => { const now = Date.now(); if (now - lastTap.current < 330) changeColor(); lastTap.current = now; }}
-            onClick={() => { interact(); if (shrinkTimer.current) clearTimeout(shrinkTimer.current); setCompact(false); shrinkTimer.current = setTimeout(() => setCompact(true), 3000); }}
+            onClick={() => { if (injuredUntil > Date.now()) return; interact(); if (shrinkTimer.current) clearTimeout(shrinkTimer.current); setCompact(false); shrinkTimer.current = setTimeout(() => setCompact(true), 3000); }}
             className={`relative cursor-grab active:cursor-grabbing transition-transform duration-700 ease-in-out ${compact ? "h-[76px] w-[76px]" : "h-[112px] w-[112px]"}`}
             style={{ touchAction: "none" }}
             aria-label="ConnectX puppy. Drag to move; double tap to change colour."
