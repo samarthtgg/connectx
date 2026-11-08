@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 type Mood = "idle" | "jump" | "left" | "right" | "sleep" | "think" | "wave";
 const colors = ["#9ca3af","#f3a6c8","#f59e0b","#facc15","#84cc16","#22c55e","#14b8a6","#06b6d4","#38bdf8","#60a5fa","#818cf8","#a78bfa","#c084fc","#e879f9","#fb7185","#f87171","#fb923c","#d6b38a","#64748b","#f8fafc"];
 
 export default function ConnectXPuppy() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
   const [started, setStarted] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -41,6 +43,11 @@ export default function ConnectXPuppy() {
       recognition.current?.stop?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (/login|signup|register/.test(pathname) || pathname === "/") setBubble("Create your ConnectX account for free! 🐾");
+    else if (/chat|home/.test(pathname)) setBubble("Chat with someone to interact! 💬");
+  }, [pathname]);
 
   const say = useCallback((text: string, nextMood: Mood = "wave") => {
     setBubble(text);
