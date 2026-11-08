@@ -242,21 +242,39 @@ export default function ConnectXPuppy() {
   };
 
   if (injuryPreview) return (
-    <div className="fixed bottom-24 right-4 z-[110] flex w-64 flex-col items-center rounded-3xl border border-rose-300/30 bg-slate-950/95 p-4 text-center text-white shadow-2xl">
-      <svg viewBox="0 0 120 112" className="h-32 w-32">
-        <path d="M34 73 Q27 55 39 42 L48 27 Q54 17 63 36 Q76 23 86 36 L96 57 Q103 78 85 88 L43 88Z" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3"/>
-        <path d="M43 43 L35 16 Q34 5 46 15 L61 35 M76 35 L91 13 Q101 7 99 22 L91 49" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3"/>
-        <ellipse cx="65" cy="59" rx="29" ry="27" fill="#f1f5f9"/>
-        <path d="M47 46 L65 44 L66 60 L48 62Z" fill="#e5e7eb" stroke="#94a3b8" strokeWidth="2"/>
-        <path d="M47 50 L65 48 M48 56 L65 54" stroke="#94a3b8" strokeWidth="2"/>
-        <path d="M75 56 Q80 54 83 58" fill="none" stroke="#172033" strokeWidth="2.5"/>
-        <path d="M61 68 Q66 64 71 68" fill="none" stroke="#475569" strokeWidth="2.5"/>
-        <path d="M77 69 Q81 73 77 77 Q73 74 77 69Z" fill="#b91c1c"/>
-        <path d="M42 76 Q49 72 55 77" stroke="#b91c1c" strokeWidth="3" strokeLinecap="round"/>
-        <path d="M35 83 Q48 79 56 86" stroke="#f8fafc" strokeWidth="5" strokeLinecap="round"/>
+    <div className="puppy-injury-scene fixed bottom-24 right-4 z-[110] flex w-64 flex-col items-center rounded-3xl border border-rose-300/30 bg-slate-950/95 p-4 text-center text-white shadow-2xl">
+      <style>{`
+        @keyframes puppy-stumble { 0%{transform:translateY(0) rotate(0) scale(1)} 12%{transform:translate(-5px,-8px) rotate(-9deg)} 24%{transform:translate(7px,-3px) rotate(10deg)} 38%{transform:translate(-4px,4px) rotate(-12deg)} 52%{transform:translate(0,13px) rotate(17deg) scale(.96)} 68%{transform:translate(0,15px) rotate(90deg) scale(.9)} 100%{transform:translate(0,15px) rotate(90deg) scale(.9)} }
+        @keyframes puppy-fall-fade { 0%,35%{opacity:1} 65%,100%{opacity:.82} }
+        @keyframes puppy-tear { 0%,35%{opacity:0;transform:translateY(-5px)} 48%,100%{opacity:1;transform:translateY(0)} }
+        @keyframes puppy-bandage { 0%,45%{opacity:0;transform:scale(.2) rotate(-25deg)} 65%,100%{opacity:1;transform:scale(1) rotate(0)} }
+        @keyframes puppy-blood { 0%,48%{opacity:0;transform:scale(.2)} 66%,100%{opacity:1;transform:scale(1)} }
+        @keyframes puppy-pulse { 0%,100%{opacity:.45} 50%{opacity:1} }
+        .puppy-injury-body{transform-origin:60px 70px;animation:puppy-stumble 3.8s cubic-bezier(.3,.1,.7,1) both}
+        .puppy-injury-tear{animation:puppy-tear 3.8s ease-out both}
+        .puppy-injury-bandage{transform-box:fill-box;transform-origin:center;animation:puppy-bandage 3.8s ease-out both}
+        .puppy-injury-blood{transform-box:fill-box;transform-origin:center;animation:puppy-blood 3.8s ease-out both}
+        .puppy-injury-caption{animation:puppy-pulse 1.2s ease-in-out infinite}
+        @media(prefers-reduced-motion:reduce){.puppy-injury-body,.puppy-injury-tear,.puppy-injury-bandage,.puppy-injury-blood,.puppy-injury-caption{animation:none!important}}
+      `}</style>
+      <svg viewBox="0 0 120 112" className="h-32 w-32 overflow-visible">
+        <g className="puppy-injury-body">
+          <path d="M34 73 Q27 55 39 42 L48 27 Q54 17 63 36 Q76 23 86 36 L96 57 Q103 78 85 88 L43 88Z" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3"/>
+          <path d="M43 43 L35 16 Q34 5 46 15 L61 35 M76 35 L91 13 Q101 7 99 22 L91 49" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3"/>
+          <ellipse cx="65" cy="59" rx="29" ry="27" fill="#f1f5f9"/>
+          <path d="M47 46 L65 44 L66 60 L48 62Z" fill="#e5e7eb" stroke="#94a3b8" strokeWidth="2"/>
+          <path d="M47 50 L65 48 M48 56 L65 54" stroke="#94a3b8" strokeWidth="2"/>
+          <path d="M75 56 Q80 54 83 58" fill="none" stroke="#172033" strokeWidth="2.5"/>
+          <path d="M61 68 Q66 64 71 68" fill="none" stroke="#475569" strokeWidth="2.5"/>
+          <path className="puppy-injury-bandage" d="M44 44 L66 42 L68 59 L46 62Z" fill="#f8fafc" stroke="#94a3b8" strokeWidth="2"/>
+          <path d="M47 48 L66 46 M47 54 L67 52 M49 59 L67 57" stroke="#94a3b8" strokeWidth="2"/>
+          <path className="puppy-injury-blood" d="M78 69 Q84 76 78 82 Q72 76 78 69Z" fill="#a61b1b"/>
+          <path className="puppy-injury-blood" d="M38 79 Q47 74 55 80" stroke="#a61b1b" strokeWidth="3" strokeLinecap="round" fill="none"/>
+        </g>
+        <path className="puppy-injury-tear" d="M84 61 Q89 68 84 73 Q79 68 84 61Z" fill="#38bdf8"/>
       </svg>
-      <p className="text-sm font-semibold text-rose-200">Puppy is hurt and resting 🩹</p>
-      <p className="mt-1 text-xs text-slate-300">Please be gentle. Recovery: 10 minutes.</p>
+      <p className="puppy-injury-caption text-sm font-semibold text-rose-200">Oh no... Puppy is hurt 🩹</p>
+      <p className="mt-1 text-xs text-slate-300">Puppy is resting and needs 10 minutes to recover.</p>
     </div>
   );
 
