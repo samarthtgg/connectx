@@ -56,7 +56,7 @@ type DirectMessage = {
 };
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; audience?:"friends"|"close_friends"; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
-type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null };
+type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null; nickname?: string | null };
 type RecentChat = { profile: Profile; preview: string; lastMessageAt: string; unreadCount: number };
 type ChatGroup = { id: string; name: string; description: string | null; avatar_url: string | null; created_by: string; created_at: string; my_role?: string };
 type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean; reply_to_id?: string | null; reply_to_content?: string | null; reply_to_sender_id?: string | null };
@@ -276,6 +276,8 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const [forwardRecipientIds, setForwardRecipientIds] = useState<string[]>([]);
   const [forwardBusy, setForwardBusy] = useState(false);
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [savingNickname, setSavingNickname] = useState(false);
   const [showArchivedChats, setShowArchivedChats] = useState(false);
   const [chatActionMenuId, setChatActionMenuId] = useState<string | null>(null);
   const [chatLockIds, setChatLockIds] = useState<string[]>([]);
@@ -341,6 +343,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
 
   const openFriendProfile = async () => {
     if (!selectedFriend) return;
+    setNicknameDraft(chatPreferences.find((item) => item.friend_id === selectedFriend.id)?.nickname ?? "");
     setFriendProfile(selectedFriend);
     setLoadingFriendProfile(true);
     setCommonGroups([]);
@@ -1190,7 +1193,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const loadChatPreferences = useCallback(async () => {
     if (!userId) return;
     const { data, error: prefError } = await supabase.from("chat_preferences")
-      .select("friend_id,cleared_at,hidden_at,is_pinned,is_archived,unread_at,draft").eq("user_id", userId);
+      .select("friend_id,cleared_at,hidden_at,is_pinned,is_archived,unread_at,draft,nickname").eq("user_id", userId);
     if (prefError) throw prefError;
     setChatPreferences((data ?? []) as ChatPreference[]);
   }, [userId]);
@@ -1428,12 +1431,25 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     }
   }
 
-  async function saveChatPreference(friendId: string, patch: { cleared_at?: string | null; hidden_at?: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null }) {
+  async function saveChatPreference(friendId: string, patch: { cleared_at?: string | null; hidden_at?: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null; nickname?: string | null }) {
     const { error: prefError } = await supabase.from("chat_preferences").upsert({
       user_id: userId, friend_id: friendId, ...patch, updated_at: new Date().toISOString(),
     }, { onConflict: "user_id,friend_id" });
     if (prefError) throw prefError;
     await loadChatPreferences();
+  }
+
+  async function savePrivateNickname() {
+    if (!friendProfile || !userId || savingNickname) return;
+    const nickname = nicknameDraft.trim();
+    if (nickname.length > 40) { setError("Nickname must be 40 characters or fewer."); return; }
+    setSavingNickname(true); setError("");
+    try {
+      await saveChatPreference(friendProfile.id, { nickname: nickname || null });
+      setNotice(nickname ? "Private nickname saved. Only you can see it." : "Private nickname removed.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save private nickname.");
+    } finally { setSavingNickname(false); }
   }
 
   function persistChatLocks(next: string[]) {
@@ -2133,7 +2149,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     }, 1800);
   }
 
-  const activeName = selectedFriend ? displayName(selectedFriend) : "";
+  const activeName = selectedFriend ? (chatPreferences.find((item) => item.friend_id === selectedFriend.id)?.nickname?.trim() || displayName(selectedFriend)) : "";
 
   async function askConnectXIntelligence(promptOverride?: string, mode = "assistant") {
     const question = (promptOverride ?? intelligenceInput).trim();
@@ -2740,7 +2756,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                 onMouseDown={() => beginLongPress(friend.id)} onMouseUp={endLongPress} onMouseLeave={endLongPress}
                 onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } setChatActionMenuId(null); chooseFriend(friend); }}>
                  <span className="presence-avatar-wrap">{friend.avatar_url ? <img className="avatar chat-row-photo" src={friend.avatar_url} alt={`${displayName(friend)} profile photo`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setPhotoViewer({ url: friend.avatar_url!, name: displayName(friend) }); } }} /> : <span className="avatar">{initials(displayName(friend))}</span>}{onlineUserIds.has(friend.id) && <span className="presence-online-dot" aria-label="Online" title="Online" />}</span>
-                <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{recentChat?.preview || (friend.username ? `@${friend.username}` : tr("Tap to open chat"))}{preference?.unread_at ? " · " + tr("Unread") : ""}</small></span>
+                <span className="chat-info"><strong>{preference?.is_pinned ? "📌 " : ""}{preference?.nickname?.trim() || displayName(friend)}{preference?.unread_at ? " •" : ""}</strong><small>{recentChat?.preview || (friend.username ? `@${friend.username}` : tr("Tap to open chat"))}{preference?.unread_at ? " · " + tr("Unread") : ""}</small></span>
                 <span className="chat-row-meta">
                   {recentChat?.lastMessageAt && <time>{timeLabel(recentChat.lastMessageAt)}</time>}
                   {!!recentChat?.unreadCount && <span className="unread-count-badge" aria-label={`${recentChat.unreadCount} unread messages`}>{recentChat.unreadCount > 99 ? "99+" : recentChat.unreadCount}</span>}
@@ -2914,6 +2930,13 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             <h2>{displayName(friendProfile)}</h2>
             {friendProfile.username && <p className="friend-profile-username">@{friendProfile.username}</p>}
             <small>{loadingFriendProfile ? "Loading profile…" : "ConnectX friend"}</small>
+            {acceptedIds.has(friendProfile.id) && <div style={{ width: "100%", maxWidth: 320, margin: "18px auto 8px", textAlign: "left" }}>
+              <label htmlFor="private-friend-nickname" style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>Private nickname</label>
+              <input id="private-friend-nickname" value={nicknameDraft} onChange={(event) => setNicknameDraft(event.target.value)} maxLength={40} placeholder={displayName(friendProfile)} style={{ width: "100%", boxSizing: "border-box", borderRadius: 12, border: "1px solid var(--border, #ddd)", background: "var(--surface, #fff)", color: "inherit", padding: "12px 14px", font: "inherit" }} />
+              <small style={{ display: "block", marginTop: 6, opacity: 0.7 }}>Only you see this name. Your friend and other users will not.</small>
+              <button type="button" disabled={savingNickname} onClick={() => void savePrivateNickname()} style={{ marginTop: 10, border: 0, borderRadius: 10, padding: "10px 15px", fontWeight: 700, cursor: savingNickname ? "wait" : "pointer" }}>{savingNickname ? "Saving…" : "Save nickname"}</button>
+              {!!chatPreferences.find((item) => item.friend_id === friendProfile.id)?.nickname && <button type="button" disabled={savingNickname} onClick={() => { setNicknameDraft(""); void (async () => { setSavingNickname(true); try { await saveChatPreference(friendProfile.id, { nickname: null }); setNotice("Private nickname removed."); } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not remove nickname."); } finally { setSavingNickname(false); } })(); }} style={{ marginLeft: 8, marginTop: 10, background: "transparent", border: "1px solid var(--border, #ddd)", borderRadius: 10, padding: "10px 12px", color: "inherit" }}>Remove</button>}
+            </div>}
             <div className="friend-profile-actions">
               <button type="button" onClick={() => { setFriendProfile(null); void chooseFriend(friendProfile); }}><span>▣</span>Message</button>
               {acceptedIds.has(friendProfile.id) ? <>
