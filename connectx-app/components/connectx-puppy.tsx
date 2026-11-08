@@ -20,7 +20,7 @@ export default function ConnectXPuppy() {
   const [dragging, setDragging] = useState(false);
   const [compact, setCompact] = useState(false);
   const [eyesClosed, setEyesClosed] = useState(false);
-  const [lastInteraction, setLastInteraction] = useState(Date.now());
+  const [lastInteraction, setLastInteraction] = useState(0);
   const [ballPlaying, setBallPlaying] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const recognition = useRef<any>(null);
@@ -44,6 +44,7 @@ export default function ConnectXPuppy() {
   }, [showBubble]);
 
   useEffect(() => {
+    setLastInteraction(Date.now());
     const blinkTimer = setInterval(() => {
       setEyesClosed(true);
       window.setTimeout(() => setEyesClosed(false), 140);
