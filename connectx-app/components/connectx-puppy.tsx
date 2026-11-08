@@ -155,7 +155,7 @@ export default function ConnectXPuppy() {
               <path d="M43 43 L35 16 Q34 5 46 15 L61 35 M76 35 L91 13 Q101 7 99 22 L91 49" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3" strokeLinejoin="round"/>
               <path d="M42 22 L46 36 L55 35Z M83 34 L94 20 L91 40Z" fill="#f9a8d4"/>
               <ellipse cx="65" cy="59" rx="29" ry="27" fill="#f1f5f9"/>
-              <g><ellipse cx="55" cy="55" rx="4.2" ry="6" fill="#172033"><animate attributeName="ry" values="6;2.2;6" keyTimes="0;0.08;0.16" dur="1s" repeatCount="indefinite"/></ellipse><ellipse cx="75" cy="55" rx="4.2" ry="6" fill="#172033"><animate attributeName="ry" values="6;2.2;6" keyTimes="0;0.08;0.16" dur="1s" repeatCount="indefinite"/></ellipse><circle cx="56" cy="53" r="1.8" fill="white"><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.08;0.16" dur="1s" repeatCount="indefinite"/></circle><circle cx="76" cy="53" r="1.8" fill="white"><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.08;0.16" dur="1s" repeatCount="indefinite"/></circle></g>
+              <g className="cx-puppy-eyes"><ellipse cx="55" cy="55" rx="4.2" ry="6" fill="#172033"/><ellipse cx="75" cy="55" rx="4.2" ry="6" fill="#172033"/><circle cx="56" cy="53" r="1.8" fill="white"/><circle cx="76" cy="53" r="1.8" fill="white"/></g>
               <ellipse cx="45" cy="66" rx="6" ry="3" fill="#f9a8d4" opacity=".8"/><ellipse cx="85" cy="66" rx="6" ry="3" fill="#f9a8d4" opacity=".8"/>
               <path d="M61 65 Q65 60 69 65 Q66 72 65 72Z" fill="#f472b6"/><path d="M65 72 Q59 78 54 73 M65 72 Q71 78 76 73" fill="none" stroke="#475569" strokeWidth="1.7" strokeLinecap="round"/>
               <path d="M43 82 Q34 94 45 99 L56 99 Q63 94 55 84 M76 84 Q69 95 80 100 L91 99 Q98 93 87 81" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="2"/>
@@ -170,14 +170,14 @@ export default function ConnectXPuppy() {
         </div>
       )}
       <style jsx global>{`
-        @keyframes cxPuppyBlink { 0%, 39%, 44%, 100% { transform: scaleY(1); } 41%, 42% { transform: scaleY(.06); } }
+        @keyframes cxPuppyBlink { 0%, 40%, 46%, 100% { transform: scaleY(1); } 43%, 44% { transform: scaleY(.06); } }
         @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes cxPuppyTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(20deg)} }
         @keyframes cxPuppyJump { 0%,100%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-42px) rotate(-9deg)} 70%{transform:translateY(-20px) rotate(7deg)} }
         @keyframes cxPuppyDance { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-15deg) translateY(-5px)} 75%{transform:rotate(15deg) translateY(-5px)} }
         @keyframes cxPuppyThink { to{transform:rotate(8deg)} }
         .cx-puppy-idle{animation:cxPuppyBob 2.2s ease-in-out infinite;transform-origin:50% 90%}
-        .cx-puppy-blink{transform-box:fill-box;transform-origin:center;animation:cxPuppyBlink 3.6s infinite ease-in-out}
+        .cx-puppy-eyes{transform-box:fill-box;transform-origin:center;animation:cxPuppyBlink 1s infinite ease-in-out}
         .cx-puppy-tail{transform-origin:28px 70px;animation:cxPuppyTail .55s ease-in-out infinite}
         .cx-puppy-jump{animation:cxPuppyJump .7s ease-in-out 2}
         .cx-puppy-sleep{transform:rotate(12deg);opacity:.8}
