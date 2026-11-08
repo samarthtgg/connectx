@@ -165,9 +165,8 @@ export default function ConnectXPuppy() {
             {bubble}
           </div>}
           {menuOpen && <div className="mb-2 w-52 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-2 text-sm text-white shadow-2xl">
-            <button onPointerDown={e => e.stopPropagation()} onClick={startListening} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/10">{listening ? "🔴 Listening…" : "🎙️ Talk to puppy"}</button>
-            <button onPointerDown={e => e.stopPropagation()} onClick={() => { changeColor(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/10">🎨 Change colour ({colorIndex + 1}/20)</button>
-            <a href="/puppy-settings" onPointerDown={e => e.stopPropagation()} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/10">📖 Puppy settings & how to talk</a>\n            <button onPointerDown={e => e.stopPropagation()} onClick={() => { setVisible(false); setMenuOpen(false); localStorage.setItem("cx-puppy-hidden-v1","true"); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-300 hover:bg-white/10">🙈 Hide puppy</button>
+            <button onPointerDown={e => e.stopPropagation()} onClick={startListening} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/10">{listening ? "🔴 Listening…" : "🎙️ Talk"}</button>
+            <button onPointerDown={e => e.stopPropagation()} onClick={() => { setVisible(false); setMenuOpen(false); localStorage.setItem("cx-puppy-hidden-v1","true"); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-300 hover:bg-white/10">🙈 Hide</button>
           </div>}
           <div
             onPointerDown={(event) => { interact(); const rect = event.currentTarget.getBoundingClientRect(); dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }; setDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }}
