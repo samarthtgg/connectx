@@ -43,6 +43,14 @@ export default function ConnectXPuppy() {
 
   const say = useCallback((message: string, nextMood: Mood = "wave") => {
     showBubble(message, 2200);
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const voiceLine = new SpeechSynthesisUtterance(message);
+      voiceLine.lang = "en-IN";
+      voiceLine.rate = 0.96;
+      voiceLine.pitch = nextMood === "happy" || nextMood === "wave" ? 1.15 : 1;
+      window.speechSynthesis.speak(voiceLine);
+    }
     setMood(nextMood);
     if (moodTimer.current) clearTimeout(moodTimer.current);
     moodTimer.current = setTimeout(() => setMood("idle"), 3200);
