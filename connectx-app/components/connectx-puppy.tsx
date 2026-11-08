@@ -170,12 +170,14 @@ export default function ConnectXPuppy() {
         </div>
       )}
       <style jsx global>{`
-        @keyframes cxPuppyBlink { 0%, 43%, 47%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.08); } }\n        @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+        @keyframes cxPuppyBlink { 0%, 39%, 44%, 100% { transform: scaleY(1); } 41%, 42% { transform: scaleY(.06); } }
+        @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes cxPuppyTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(20deg)} }
         @keyframes cxPuppyJump { 0%,100%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-42px) rotate(-9deg)} 70%{transform:translateY(-20px) rotate(7deg)} }
         @keyframes cxPuppyDance { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-15deg) translateY(-5px)} 75%{transform:rotate(15deg) translateY(-5px)} }
         @keyframes cxPuppyThink { to{transform:rotate(8deg)} }
-        .cx-puppy-idle{animation:cxPuppyBob 2.2s ease-in-out infinite;transform-origin:50% 90%}\n        .cx-puppy-blink{transform-box:fill-box;transform-origin:center;animation:cxPuppyBlink 4.2s infinite ease-in-out}
+        .cx-puppy-idle{animation:cxPuppyBob 2.2s ease-in-out infinite;transform-origin:50% 90%}
+        .cx-puppy-blink{transform-box:fill-box;transform-origin:center;animation:cxPuppyBlink 3.6s infinite ease-in-out}
         .cx-puppy-tail{transform-origin:28px 70px;animation:cxPuppyTail .55s ease-in-out infinite}
         .cx-puppy-jump{animation:cxPuppyJump .7s ease-in-out 2}
         .cx-puppy-sleep{transform:rotate(12deg);opacity:.8}
