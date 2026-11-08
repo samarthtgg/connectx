@@ -10,7 +10,7 @@ export default function ConnectXPuppy() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
+
   const [colorIndex, setColorIndex] = useState(0);
   const [mood, setMood] = useState<Mood>("idle");
   const [bubble, setBubble] = useState("");
@@ -61,8 +61,14 @@ export default function ConnectXPuppy() {
 
   useEffect(() => {
     if (!visible) return;
-    if (/login|signup|register/.test(pathname)) showBubble("Create an account or log in! 🐾", 2000);
-  }, [pathname, visible, showBubble]);
+    if (/login|signup|register/.test(pathname)) {
+      if (bubbleTimer.current) clearTimeout(bubbleTimer.current);
+      setBubble("Create an account or log in! 🐾");
+      setBubbleVisible(true);
+    } else {
+      setBubbleVisible(false);
+    }
+  }, [pathname, visible]);
 
   const handleCommand = useCallback((spoken: string) => {
     const command = spoken.toLowerCase().trim();
@@ -78,20 +84,20 @@ export default function ConnectXPuppy() {
     else if (/(come here|come)/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, Math.min(window.innerWidth - 112, p.x - 65)) })); say("Coming!", "jump"); }
     else if (/(spin|turn around)/.test(command)) say("Wheee, round and round!", "dance");
     else if (/(hide)/.test(command)) { setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); }
-    else say("I heard you! Try jump, dance, sleep or go left.", "think");
+    else say("Hmm? 🐾", "think");
   }, [say]);
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) { say("Voice commands work best in Chrome.", "think"); return; }
+    if (!SpeechRecognition) { say("Woof! 🐾", "think"); return; }
     const instance = new SpeechRecognition();
     recognition.current = instance;
     instance.lang = "en-IN";
     instance.interimResults = false;
     instance.maxAlternatives = 1;
-    instance.onstart = () => { setListening(true); setMenuOpen(false); say("I'm listening... speak now!", "wave"); };
+    instance.onstart = () => { setListening(true); setMenuOpen(false); say("Woof! 🐾", "wave"); };
     instance.onresult = (event: any) => handleCommand(event.results[0][0].transcript);
-    instance.onerror = () => say("I couldn't hear that. Try again.", "think");
+    instance.onerror = () => say("Woof? 🐾", "think");
     instance.onend = () => setListening(false);
     try { instance.start(); } catch { setListening(false); }
   };
@@ -128,9 +134,7 @@ export default function ConnectXPuppy() {
           {menuOpen && <div className="mb-2 w-52 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-2 text-sm text-white shadow-2xl">
             <button onPointerDown={e => e.stopPropagation()} onClick={startListening} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/10">{listening ? "🔴 Listening…" : "🎙️ Talk to puppy"}</button>
             <button onPointerDown={e => e.stopPropagation()} onClick={() => { changeColor(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/10">🎨 Change colour ({colorIndex + 1}/20)</button>
-            <button onPointerDown={e => e.stopPropagation()} onClick={() => setHelpOpen(v => !v)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/10">💡 How to talk</button>
             <button onPointerDown={e => e.stopPropagation()} onClick={() => { setVisible(false); setMenuOpen(false); localStorage.setItem("cx-puppy-hidden-v1","true"); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-300 hover:bg-white/10">🙈 Hide puppy</button>
-            {helpOpen && <p className="px-3 py-2 text-xs leading-5 text-slate-300">Tap the mic and say: jump, go left, go right, dance, sleep, think, hello, sit, wake up, come here or spin.</p>}
           </div>}
           <div
             onPointerDown={(event) => { const rect = event.currentTarget.getBoundingClientRect(); dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }; setDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }}
@@ -160,7 +164,7 @@ export default function ConnectXPuppy() {
               {mood === "wave" && <path d="M91 79 Q105 67 104 54" fill="none" stroke="#e2e8f0" strokeWidth="5" strokeLinecap="round"/>}
             </svg>
             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
-              <button aria-label="Puppy options" onPointerDown={e => e.stopPropagation()} onClick={() => { setMenuOpen(v => !v); setHelpOpen(false); }} className="rounded-full border border-white/15 bg-slate-950/95 px-3 py-1 text-sm text-white shadow-lg">•••</button>
+              <button aria-label="Puppy options" onPointerDown={e => e.stopPropagation()} onClick={() => setMenuOpen(v => !v)} className="rounded-full border border-white/15 bg-slate-950/95 px-3 py-1 text-sm text-white shadow-lg">•••</button>
             </div>
           </div>
         </div>
