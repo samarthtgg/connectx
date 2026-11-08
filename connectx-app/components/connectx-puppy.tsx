@@ -87,6 +87,17 @@ export default function ConnectXPuppy() {
   }, [mood, showBubble, username]);
 
   useEffect(() => {
+    if (!visible) return;
+    const playfulTimer = window.setInterval(() => {
+      if (!dragging && !menuOpen && mood === "idle" && !ballPlaying && Math.random() > 0.45) {
+        setMood("wave");
+        window.setTimeout(() => setMood(current => current === "wave" ? "idle" : current), 1200);
+      }
+    }, 8500);
+    return () => window.clearInterval(playfulTimer);
+  }, [visible, dragging, menuOpen, mood, ballPlaying]);
+
+  useEffect(() => {
     const idleTimer = window.setInterval(() => {
       if (Date.now() - lastInteraction >= 30000 && mood === "idle" && !ballPlaying) {
         setMood("sad");
@@ -140,8 +151,8 @@ export default function ConnectXPuppy() {
     else if (/\b(cry|crying)\b/.test(command)) say("Boohoo... 😭", "cry");
     else if (/(play with (the )?ball|play ball|fetch)/.test(command)) { setBallPlaying(true); say("Yippee! Let's play fetch! 🎾", "play"); window.setTimeout(() => setBallPlaying(false), 6500); }
     else if (/(jump|hop)/.test(command)) say("Wheee! 🐾", "jump");
-    else if (/(go |move )?left|turn left/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, p.x - 105) })); say("Going left!", "left"); }
-    else if (/(go |move )?right|turn right/.test(command)) { setPosition(p => ({ ...p, x: Math.min(window.innerWidth - 112, p.x + 105) })); say("Going right!", "right"); }
+    else if (/(go |move |walk )?left|turn left/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, p.x - 105) })); say("Walking left!", "left"); }
+    else if (/(go |move |walk )?right|turn right/.test(command)) { setPosition(p => ({ ...p, x: Math.min(window.innerWidth - 112, p.x + 105) })); say("Walking right!", "right"); }
     else if (/(sleep|nap|rest)/.test(command)) say("Zzz... sweet dreams 💜", "sleep");
     else if (/(think|thinking)/.test(command)) say("Hmm... let me think 🤔", "think");
     else if (/(dance|dancing)/.test(command)) say("Dance party! 💃", "dance");
@@ -151,7 +162,7 @@ export default function ConnectXPuppy() {
     else if (/(hello|hi|hey)/.test(command)) say(`Hey ${username}! I missed you! 🐾`, "wave");
     else if (/(sit|stop|stay)/.test(command)) say("I'll stay right here.", "idle");
     else if (/(wake|awake)/.test(command)) say("I'm awake! Let's play!", "wave");
-    else if (/(come here|come)/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, Math.min(window.innerWidth - 112, p.x - 65)) })); say("Coming!", "jump"); }
+    else if (/(come here|come to me|follow me|come)/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, Math.min(window.innerWidth - 112, window.innerWidth / 2 - 56)), y: Math.max(78, Math.min(window.innerHeight - 150, window.innerHeight / 2 - 56)) })); say(`Coming to you, ${username}!`, "jump"); }
     else if (/(spin|turn around)/.test(command)) say("Wheee, round and round!", "dance");
     else if (/(hide)/.test(command)) { setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); }
     else say("Hmm? 🐾", "think");
@@ -197,7 +208,7 @@ export default function ConnectXPuppy() {
   return (
     <>
       {visible && (
-        <div className="fixed z-[100] touch-none select-none" style={{ left: position.x, top: position.y }}>
+        <div className="fixed z-[100] touch-none select-none" style={{ left: position.x, top: position.y, transition: dragging ? "none" : "left 650ms cubic-bezier(.2,.8,.2,1), top 650ms cubic-bezier(.2,.8,.2,1)" }}>
           <div className="mb-1 inline-flex items-center gap-1 rounded-full border border-amber-300/25 bg-slate-950/90 px-2.5 py-1 text-[10px] font-semibold text-amber-100 shadow-lg">{level} · {interactionCount} points</div>
           <div className="mb-2 h-1 w-24 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-gradient-to-r from-amber-300 to-emerald-300 transition-all duration-500" style={{ width: `${levelProgress}%` }} /></div>
           {bubbleVisible && <div className="mb-2 max-w-56 rounded-2xl border border-cyan-300/25 bg-slate-950/95 px-3 py-2 text-xs font-medium text-white shadow-xl">
@@ -252,6 +263,8 @@ export default function ConnectXPuppy() {
         @keyframes cxPuppyDance { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-15deg) translateY(-5px)} 75%{transform:rotate(15deg) translateY(-5px)} }
         @keyframes cxPuppyThink { to{transform:rotate(8deg)} }
         @keyframes cxPuppyTailFast { 0%,100%{transform:rotate(-22deg)} 50%{transform:rotate(30deg)} }
+        @keyframes cxPuppyWalk { 0%,100%{transform:translateY(0) rotate(0)} 25%{transform:translateY(-3px) rotate(-4deg)} 75%{transform:translateY(-3px) rotate(4deg)} }
+        @keyframes cxPuppyWave { 0%,100%{transform:rotate(0)} 30%{transform:rotate(-7deg) translateY(-4px)} 65%{transform:rotate(7deg) translateY(-2px)} }
         .cx-puppy-idle{animation:cxPuppyBob 2.2s ease-in-out infinite;transform-origin:50% 90%}
         .cx-puppy-eyes{transform-box:fill-box;transform-origin:center;animation:cxPuppyBlink 1s infinite ease-in-out}
         .cx-puppy-tail{transform-origin:28px 70px;animation:cxPuppyTail .55s ease-in-out infinite}
@@ -263,6 +276,9 @@ export default function ConnectXPuppy() {
         .cx-puppy-dance{animation:cxPuppyDance .45s ease-in-out 5}
         .cx-puppy-left{transform:translateX(-8px) scaleX(.96)}
         .cx-puppy-right{transform:translateX(8px) scaleX(1.04)}
+        .cx-puppy-left,.cx-puppy-right{animation:cxPuppyWalk .32s ease-in-out 3}
+        .cx-puppy-dance{transform-origin:50% 80%}
+        .cx-puppy-idle:has(.cx-puppy-tail-excited){animation:cxPuppyWave .55s ease-in-out 2}
       `}</style>
     </>
   );
