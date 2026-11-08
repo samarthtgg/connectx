@@ -9,7 +9,6 @@ const colors = ["#9ca3af","#f3a6c8","#f59e0b","#facc15","#84cc16","#22c55e","#14
 export default function ConnectXPuppy() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [colorIndex, setColorIndex] = useState(0);
@@ -43,11 +42,9 @@ export default function ConnectXPuppy() {
 
   useEffect(() => {
     try {
-      const seen = localStorage.getItem("cx-puppy-intro-v1");
       const hidden = localStorage.getItem("cx-puppy-hidden-v1");
       const savedColor = Number(localStorage.getItem("cx-puppy-color-v1") || 0);
       const savedPosition = localStorage.getItem("cx-puppy-position-v1");
-      if (!seen) setGuideOpen(true);
       setVisible(hidden !== "true");
       setColorIndex(Number.isFinite(savedColor) ? ((savedColor % colors.length) + colors.length) % colors.length : 0);
       if (savedPosition) {
@@ -64,8 +61,7 @@ export default function ConnectXPuppy() {
 
   useEffect(() => {
     if (!visible) return;
-    if (/login|signup|register/.test(pathname) || pathname === "/") showBubble("Create your ConnectX account for free! 🐾", 2000);
-    else if (/chat|home/.test(pathname)) showBubble("Chat with someone to interact! 💬", 2000);
+    if (/login|signup|register/.test(pathname)) showBubble("Create an account or log in! 🐾", 2000);
   }, [pathname, visible, showBubble]);
 
   const handleCommand = useCallback((spoken: string) => {
@@ -102,10 +98,7 @@ export default function ConnectXPuppy() {
 
   const begin = () => {
     setVisible(true);
-    setGuideOpen(false);
-    localStorage.setItem("cx-puppy-intro-v1", "true");
     localStorage.setItem("cx-puppy-hidden-v1", "false");
-    showBubble("Drag me • Double-tap for colours • ⋯ for mic", 2000);
     setMood("wave");
   };
 
@@ -123,7 +116,7 @@ export default function ConnectXPuppy() {
     say(`New colour ${next + 1} of 20! 🎨`, "wave");
   };
 
-  if (!visible && !guideOpen) return <button type="button" onClick={() => { setVisible(true); localStorage.setItem("cx-puppy-hidden-v1","false"); showBubble("I'm back! 🐾", 2000); }} className="fixed bottom-24 right-4 z-[100] rounded-full border border-cyan-300/30 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-cyan-200 shadow-xl">Show puppy 🐾</button>;
+  if (!visible) return <button type="button" onClick={() => { setVisible(true); localStorage.setItem("cx-puppy-hidden-v1","false"); showBubble("I'm back! 🐾", 2000); }} className="fixed bottom-24 right-4 z-[100] rounded-full border border-cyan-300/30 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-cyan-200 shadow-xl">Show puppy 🐾</button>;
 
   return (
     <>
@@ -158,8 +151,7 @@ export default function ConnectXPuppy() {
               <path d="M43 43 L35 16 Q34 5 46 15 L61 35 M76 35 L91 13 Q101 7 99 22 L91 49" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3" strokeLinejoin="round"/>
               <path d="M42 22 L46 36 L55 35Z M83 34 L94 20 L91 40Z" fill="#f9a8d4"/>
               <ellipse cx="65" cy="59" rx="29" ry="27" fill="#f1f5f9"/>
-              <ellipse cx="55" cy="55" rx="4.2" ry="6" fill="#172033"/><ellipse cx="75" cy="55" rx="4.2" ry="6" fill="#172033"/>
-              <circle cx="56" cy="53" r="1.8" fill="white"/><circle cx="76" cy="53" r="1.8" fill="white"/>
+              <g className="cx-puppy-blink"><ellipse cx="55" cy="55" rx="4.2" ry="6" fill="#172033"/><ellipse cx="75" cy="55" rx="4.2" ry="6" fill="#172033"/><circle cx="56" cy="53" r="1.8" fill="white"/><circle cx="76" cy="53" r="1.8" fill="white"/></g>
               <ellipse cx="45" cy="66" rx="6" ry="3" fill="#f9a8d4" opacity=".8"/><ellipse cx="85" cy="66" rx="6" ry="3" fill="#f9a8d4" opacity=".8"/>
               <path d="M61 65 Q65 60 69 65 Q66 72 65 72Z" fill="#f472b6"/><path d="M65 72 Q59 78 54 73 M65 72 Q71 78 76 73" fill="none" stroke="#475569" strokeWidth="1.7" strokeLinecap="round"/>
               <path d="M43 82 Q34 94 45 99 L56 99 Q63 94 55 84 M76 84 Q69 95 80 100 L91 99 Q98 93 87 81" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="2"/>
@@ -173,16 +165,6 @@ export default function ConnectXPuppy() {
           </div>
         </div>
       )}
-      {guideOpen && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4">
-        <div className="w-full max-w-sm rounded-3xl border border-cyan-300/30 bg-slate-950 p-6 text-white shadow-2xl">
-          <div className="mb-3 text-5xl">🐶</div>
-          <h2 className="text-xl font-bold">Meet your ConnectX puppy!</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-300">Drag me anywhere. Double-tap me to change through 20 colours. Tap ••• for microphone, commands and hide controls.</p>
-          <p className="mt-3 text-sm text-cyan-200">Try: “Jump”, “Dance”, “Go left”, “Sleep” or “Think”.</p>
-          <button onClick={begin} className="mt-5 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-violet-500 px-4 py-3 font-bold text-white">Start puppy 🐾</button>
-          <button onClick={() => { setGuideOpen(false); setVisible(false); localStorage.setItem("cx-puppy-intro-v1","true"); localStorage.setItem("cx-puppy-hidden-v1","true"); }} className="mt-2 w-full rounded-xl px-4 py-2 text-sm text-slate-400">Not now</button>
-        </div>
-      </div>}
       <style jsx global>{`
         @keyframes cxPuppyBlink { 0%, 43%, 47%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.08); } }\n        @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes cxPuppyTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(20deg)} }
