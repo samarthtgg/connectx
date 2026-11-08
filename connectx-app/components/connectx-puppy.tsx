@@ -12,7 +12,7 @@ export default function ConnectXPuppy() {
   const [visible, setVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const [colorIndex, setColorIndex] = useState(0);
+  const [colorIndex, setColorIndex] = useState(2);
   const [mood, setMood] = useState<Mood>("idle");
   const [bubble, setBubble] = useState("");
   const [bubbleVisible, setBubbleVisible] = useState(false);
@@ -43,14 +43,6 @@ export default function ConnectXPuppy() {
 
   const say = useCallback((message: string, nextMood: Mood = "wave") => {
     showBubble(message, 2200);
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const voiceLine = new SpeechSynthesisUtterance(message);
-      voiceLine.lang = "en-IN";
-      voiceLine.rate = 0.96;
-      voiceLine.pitch = nextMood === "happy" || nextMood === "wave" ? 1.15 : 1;
-      window.speechSynthesis.speak(voiceLine);
-    }
     setMood(nextMood);
     if (moodTimer.current) clearTimeout(moodTimer.current);
     moodTimer.current = setTimeout(() => setMood("idle"), 3200);
@@ -118,7 +110,7 @@ export default function ConnectXPuppy() {
   useEffect(() => {
     try {
       const hidden = localStorage.getItem("cx-puppy-hidden-v1");
-      const savedColor = Number(localStorage.getItem("cx-puppy-color-v1") || 0);
+      const savedColor = Number(localStorage.getItem("cx-puppy-color-v1") ?? 2);
       const savedPosition = localStorage.getItem("cx-puppy-position-v1");
       setVisible(hidden !== "true");
       setColorIndex(Number.isFinite(savedColor) ? ((savedColor % colors.length) + colors.length) % colors.length : 0);
@@ -217,8 +209,6 @@ export default function ConnectXPuppy() {
     <>
       {visible && (
         <div className="fixed z-[100] touch-none select-none" style={{ left: position.x, top: position.y, transition: dragging ? "none" : "left 650ms cubic-bezier(.2,.8,.2,1), top 650ms cubic-bezier(.2,.8,.2,1)" }}>
-          <div className="mb-1 inline-flex items-center gap-1 rounded-full border border-amber-300/25 bg-slate-950/90 px-2.5 py-1 text-[10px] font-semibold text-amber-100 shadow-lg">{level} · {interactionCount} points</div>
-          <div className="mb-2 h-1 w-24 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-gradient-to-r from-amber-300 to-emerald-300 transition-all duration-500" style={{ width: `${levelProgress}%` }} /></div>
           {bubbleVisible && <div className="mb-2 max-w-56 rounded-2xl border border-cyan-300/25 bg-slate-950/95 px-3 py-2 text-xs font-medium text-white shadow-xl">
             {bubble}
           </div>}
