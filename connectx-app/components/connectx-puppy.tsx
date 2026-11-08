@@ -51,6 +51,21 @@ export default function ConnectXPuppy() {
     return () => clearInterval(blinkTimer);
   }, []);
 
+  const interact = () => {
+    setLastInteraction(Date.now());
+    if (mood === "sad") setMood("idle");
+  };
+
+  useEffect(() => {
+    const idleTimer = window.setInterval(() => {
+      if (Date.now() - lastInteraction >= 30000 && mood === "idle" && !ballPlaying) {
+        setMood("sad");
+        showBubble("Are you still there? 🥺", 2600);
+      }
+    }, 1000);
+    return () => window.clearInterval(idleTimer);
+  }, [lastInteraction, mood, ballPlaying, showBubble]);
+
   useEffect(() => {
     try {
       const hidden = localStorage.getItem("cx-puppy-hidden-v1");
@@ -83,7 +98,13 @@ export default function ConnectXPuppy() {
 
   const handleCommand = useCallback((spoken: string) => {
     const command = spoken.toLowerCase().trim();
-    if (/(jump|hop)/.test(command)) say("Wheee! 🐾", "jump");
+    interact();
+    if (/\b(happy|happier)\b/.test(command)) say("Yay! I'm so happy! 🥰", "happy");
+    else if (/\b(sad|unhappy)\b/.test(command)) say("Aww... I'm feeling sad. 😢", "sad");
+    else if (/\b(angry|mad)\b/.test(command)) say("Grrr! I'm a little angry! 😠", "angry");
+    else if (/\b(cry|crying)\b/.test(command)) say("Boohoo... 😭", "cry");
+    else if (/(play with (the )?ball|play ball|fetch)/.test(command)) { setBallPlaying(true); say("Yippee! Let's play fetch! 🎾", "play"); window.setTimeout(() => setBallPlaying(false), 6500); }
+    else if (/(jump|hop)/.test(command)) say("Wheee! 🐾", "jump");
     else if (/(go |move )?left|turn left/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, p.x - 105) })); say("Going left!", "left"); }
     else if (/(go |move )?right|turn right/.test(command)) { setPosition(p => ({ ...p, x: Math.min(window.innerWidth - 112, p.x + 105) })); say("Going right!", "right"); }
     else if (/(sleep|nap|rest)/.test(command)) say("Zzz... sweet dreams 💜", "sleep");
