@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type Mood = "idle" | "jump" | "left" | "right" | "sleep" | "think" | "wave" | "dance" | "happy" | "sad" | "angry" | "cry" | "play";
 const colors = ["#9ca3af","#f3a6c8","#f59e0b","#facc15","#84cc16","#22c55e","#14b8a6","#06b6d4","#38bdf8","#60a5fa","#818cf8","#a78bfa","#c084fc","#e879f9","#fb7185","#f87171","#fb923c","#d6b38a","#64748b","#f8fafc"];
@@ -22,6 +23,10 @@ export default function ConnectXPuppy() {
   const [eyesClosed, setEyesClosed] = useState(false);
   const [lastInteraction, setLastInteraction] = useState(0);
   const [ballPlaying, setBallPlaying] = useState(false);
+  const [username, setUsername] = useState("friend");
+  const [interactionCount, setInteractionCount] = useState(0);
+  const lastPointAt = useRef(0);
+  const userId = useRef<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const recognition = useRef<any>(null);
   const lastTap = useRef(0);
@@ -44,18 +49,42 @@ export default function ConnectXPuppy() {
   }, [showBubble]);
 
   useEffect(() => {
+    let active = true;
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!active || !data.user) return;
+      userId.current = data.user.id;
+      const { data: profile } = await supabase.from("profiles").select("username, full_name").eq("id", data.user.id).maybeSingle();
+      if (!active) return;
+      const name = profile?.username || profile?.full_name || data.user.user_metadata?.username || data.user.email?.split("@")[0] || "friend";
+      setUsername(String(name).replace(/^@/, ""));
+      const saved = Number(localStorage.getItem(`cx-puppy-bond-${data.user.id}`) || 0);
+      setInteractionCount(Number.isFinite(saved) ? Math.max(0, saved) : 0);
+    }).catch(() => {});
     setLastInteraction(Date.now());
     const blinkTimer = setInterval(() => {
       setEyesClosed(true);
       window.setTimeout(() => setEyesClosed(false), 140);
     }, 1000);
-    return () => clearInterval(blinkTimer);
+    return () => { active = false; clearInterval(blinkTimer); };
   }, []);
 
-  const interact = () => {
+  const interact = useCallback(() => {
     setLastInteraction(Date.now());
     if (mood === "sad") setMood("idle");
-  };
+    const now = Date.now();
+    if (now - lastPointAt.current >= 1800) {
+      lastPointAt.current = now;
+      setInteractionCount(current => {
+        const next = current + 1;
+        if (userId.current) localStorage.setItem(`cx-puppy-bond-${userId.current}`, String(next));
+        if ([20, 60, 150].includes(next)) {
+          const unlocked = next === 20 ? "Junior" : next === 60 ? "Friendly" : "Best Friend";
+          window.setTimeout(() => showBubble(`We did it, ${username}! I am now ${unlocked}! 🎉`, 3200), 150);
+        }
+        return next;
+      });
+    }
+  }, [mood, showBubble, username]);
 
   useEffect(() => {
     const idleTimer = window.setInterval(() => {
@@ -97,6 +126,11 @@ export default function ConnectXPuppy() {
     }
   }, [pathname, visible]);
 
+  const level = interactionCount >= 150 ? "Best Friend" : interactionCount >= 60 ? "Friendly" : interactionCount >= 20 ? "Junior" : "Baby";
+  const levelStart = interactionCount >= 150 ? 150 : interactionCount >= 60 ? 60 : interactionCount >= 20 ? 20 : 0;
+  const nextLevelAt = interactionCount >= 150 ? 150 : interactionCount >= 60 ? 150 : interactionCount >= 20 ? 60 : 20;
+  const levelProgress = interactionCount >= 150 ? 100 : Math.min(100, ((interactionCount - levelStart) / (nextLevelAt - levelStart)) * 100);
+
   const handleCommand = useCallback((spoken: string) => {
     const command = spoken.toLowerCase().trim();
     interact();
@@ -111,14 +145,17 @@ export default function ConnectXPuppy() {
     else if (/(sleep|nap|rest)/.test(command)) say("Zzz... sweet dreams 💜", "sleep");
     else if (/(think|thinking)/.test(command)) say("Hmm... let me think 🤔", "think");
     else if (/(dance|dancing)/.test(command)) say("Dance party! 💃", "dance");
-    else if (/(hello|hi|hey)/.test(command)) say("Hello bestie! 🐾", "wave");
+    else if (/(high five|give me five|paw)/.test(command)) { if (interactionCount >= 20) say(`High five, ${username}! 🐾`, "wave"); else say("Play with me more to unlock high five!", "think"); }
+    else if (/(roll over|roll)/.test(command)) { if (interactionCount >= 60) say(`Rolling over for you, ${username}!`, "dance"); else say("Reach Friendly level to unlock roll over!", "think"); }
+    else if (/(play dead|pretend dead)/.test(command)) { if (interactionCount >= 150) say(`Anything for you, ${username}!`, "sleep"); else say("Become my Best Friend to unlock this trick!", "think"); }
+    else if (/(hello|hi|hey)/.test(command)) say(`Hey ${username}! I missed you! 🐾`, "wave");
     else if (/(sit|stop|stay)/.test(command)) say("I'll stay right here.", "idle");
     else if (/(wake|awake)/.test(command)) say("I'm awake! Let's play!", "wave");
     else if (/(come here|come)/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, Math.min(window.innerWidth - 112, p.x - 65)) })); say("Coming!", "jump"); }
     else if (/(spin|turn around)/.test(command)) say("Wheee, round and round!", "dance");
     else if (/(hide)/.test(command)) { setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); }
     else say("Hmm? 🐾", "think");
-  }, [say]);
+  }, [say, interactionCount, username, interact]);
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -128,7 +165,7 @@ export default function ConnectXPuppy() {
     instance.lang = "en-IN";
     instance.interimResults = false;
     instance.maxAlternatives = 1;
-    instance.onstart = () => { setListening(true); setMenuOpen(false); say("Woof! 🐾", "wave"); };
+    instance.onstart = () => { setListening(true); setMenuOpen(false); say(`I am listening, ${username}! 🐾`, "wave"); };
     instance.onresult = (event: any) => handleCommand(event.results[0][0].transcript);
     instance.onerror = () => say("Woof? 🐾", "think");
     instance.onend = () => setListening(false);
@@ -161,6 +198,8 @@ export default function ConnectXPuppy() {
     <>
       {visible && (
         <div className="fixed z-[100] touch-none select-none" style={{ left: position.x, top: position.y }}>
+          <div className="mb-1 inline-flex items-center gap-1 rounded-full border border-amber-300/25 bg-slate-950/90 px-2.5 py-1 text-[10px] font-semibold text-amber-100 shadow-lg">{level} · {interactionCount} points</div>
+          <div className="mb-2 h-1 w-24 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-gradient-to-r from-amber-300 to-emerald-300 transition-all duration-500" style={{ width: `${levelProgress}%` }} /></div>
           {bubbleVisible && <div className="mb-2 max-w-56 rounded-2xl border border-cyan-300/25 bg-slate-950/95 px-3 py-2 text-xs font-medium text-white shadow-xl">
             {bubble}
           </div>}
@@ -181,7 +220,7 @@ export default function ConnectXPuppy() {
             aria-label="ConnectX puppy. Drag to move; double tap to change colour."
           >
             <svg viewBox="0 0 120 112" className={`h-full w-full drop-shadow-[0_9px_14px_rgba(0,0,0,.5)] cx-puppy-idle ${mood === "jump" ? "cx-puppy-jump" : mood === "sleep" ? "cx-puppy-sleep" : mood === "think" ? "cx-puppy-think" : mood === "dance" ? "cx-puppy-dance" : mood === "left" ? "cx-puppy-left" : mood === "right" ? "cx-puppy-right" : ""}`}>
-              <path className="cx-puppy-tail" d="M30 76 C7 72 12 43 24 46 C34 49 22 62 35 62" fill="none" stroke={colors[colorIndex]} strokeWidth="11" strokeLinecap="round"/>
+              <path className={`cx-puppy-tail ${mood === "happy" || mood === "wave" || mood === "play" ? "cx-puppy-tail-excited" : ""}`} d="M30 76 C7 72 12 43 24 46 C34 49 22 62 35 62" fill="none" stroke={colors[colorIndex]} strokeWidth="11" strokeLinecap="round"/>
               <ellipse cx="61" cy="91" rx="34" ry="7" fill="#020617" opacity=".25"/>
               <path d="M34 73 Q27 55 39 42 L48 27 Q54 17 63 36 Q76 23 86 36 L96 57 Q103 78 85 88 L43 88Z" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3"/>
               <path d="M43 43 L35 16 Q34 5 46 15 L61 35 M76 35 L91 13 Q101 7 99 22 L91 49" fill={colors[colorIndex]} stroke="#e2e8f0" strokeWidth="3" strokeLinejoin="round"/>
@@ -212,9 +251,12 @@ export default function ConnectXPuppy() {
         @keyframes cxPuppyJump { 0%,100%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-42px) rotate(-9deg)} 70%{transform:translateY(-20px) rotate(7deg)} }
         @keyframes cxPuppyDance { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-15deg) translateY(-5px)} 75%{transform:rotate(15deg) translateY(-5px)} }
         @keyframes cxPuppyThink { to{transform:rotate(8deg)} }
+        @keyframes cxPuppyTailFast { 0%,100%{transform:rotate(-22deg)} 50%{transform:rotate(30deg)} }
         .cx-puppy-idle{animation:cxPuppyBob 2.2s ease-in-out infinite;transform-origin:50% 90%}
         .cx-puppy-eyes{transform-box:fill-box;transform-origin:center;animation:cxPuppyBlink 1s infinite ease-in-out}
         .cx-puppy-tail{transform-origin:28px 70px;animation:cxPuppyTail .55s ease-in-out infinite}
+        .cx-puppy-tail-excited{animation:cxPuppyTailFast .2s ease-in-out infinite}
+        @media (prefers-reduced-motion:reduce){.cx-puppy-idle,.cx-puppy-tail,.cx-puppy-tail-excited,.cx-puppy-jump,.cx-puppy-dance{animation:none!important}}
         .cx-puppy-jump{animation:cxPuppyJump .7s ease-in-out 2}
         .cx-puppy-sleep{transform:rotate(12deg);opacity:.8}
         .cx-puppy-think{animation:cxPuppyThink 1.1s ease-in-out infinite alternate}
