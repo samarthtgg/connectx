@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 type AuthMode = "signup" | "login" | "forgot";
 
 // Always send Supabase email links to the deployed app, never a temporary Codespaces preview URL.
-const AUTH_REDIRECT_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://connectx-sandy.vercel.app";
+const AUTH_REDIRECT_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://connectx-samarthtgg.vercel.app";
 
 const passwordChecks = [
   { label: "At least 8 characters", test: (value: string) => value.length >= 8 },
