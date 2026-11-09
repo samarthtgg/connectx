@@ -27,3 +27,6 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 4. Build and sign a release APK, then test the signed APK before submitting it to an app store.
 
 This wrapper is an initial test build, not yet a store-ready release. Some browser-dependent features may need native Android integration.
+
+
+The Android test APK is also built automatically by the repository GitHub Actions workflow when Android wrapper files change.
