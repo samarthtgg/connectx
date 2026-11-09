@@ -40,6 +40,7 @@ export default function ConnectXPuppy() {
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moodTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shrinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startBallFetchRef = useRef<() => void>(() => {});
 
   const showBubble = useCallback((message: string, duration = 2000) => {
     setBubble(message);
@@ -167,7 +168,7 @@ export default function ConnectXPuppy() {
     else if (/\b(sad|unhappy)\b/.test(command)) say("Aww... I'm feeling sad. 😢", "sad");
     else if (/\b(angry|mad)\b/.test(command)) say("Grrr! I'm a little angry! 😠", "angry");
     else if (/\b(cry|crying)\b/.test(command)) say("Boohoo... 😭", "cry");
-    else if (/(play with (the )?ball|play ball|fetch)/.test(command)) { startBallFetch(); say("Yippee! Let\u0027s play fetch! 🎾", "play"); }
+    else if (/(play with (the )?ball|play ball|fetch)/.test(command)) { startBallFetchRef.current(); say("Yippee! Let\u0027s play fetch! 🎾", "play"); }
     else if (/(jump|hop)/.test(command)) say("Wheee! 🐾", "jump");
     else if (/(go |move |walk )?left|turn left/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, p.x - 105) })); say("Walking left!", "left"); }
     else if (/(go |move |walk )?right|turn right/.test(command)) { setPosition(p => ({ ...p, x: Math.min(window.innerWidth - 112, p.x + 105) })); say("Walking right!", "right"); }
@@ -209,6 +210,7 @@ export default function ConnectXPuppy() {
     setBallPlaying(true);
     setBallFlight({ x: startX, y: startY, vx: (Math.random() > 0.5 ? 1 : -1) * (5.5 + Math.random() * 5), vy: -8 - Math.random() * 5, bounces: 0, returning: false });
   };
+  startBallFetchRef.current = startBallFetch;
 
   useEffect(() => {
     if (!ballFlight) return;
@@ -367,7 +369,7 @@ export default function ConnectXPuppy() {
         </div>
       )}
       <style jsx global>{`
-        @keyframes cxPuppyKickLeft { 0%,100%{transform:rotate(0)} 35%{transform:rotate(-28deg) translate(-5px,-3px)} 65%{transform:rotate(8deg)} }\\n        @keyframes cxPuppyKickRight { 0%,100%{transform:rotate(0)} 35%{transform:rotate(28deg) translate(5px,-3px)} 65%{transform:rotate(-8deg)} }\\n        @keyframes cxPuppyFetch { from{transform:translateY(1px) scaleY(.99)} to{transform:translateY(3px) scaleY(1.01)} }\\n        .cx-puppy-fetch-stance{transform-origin:50% 90%;animation:cxPuppyFetch .5s ease-in-out infinite alternate}\\n        .cx-puppy-kick-left{transform-box:fill-box;transform-origin:90% 15%;animation:cxPuppyKickLeft .55s ease-in-out infinite}\\n        .cx-puppy-kick-right{transform-box:fill-box;transform-origin:10% 15%;animation:cxPuppyKickRight .55s ease-in-out infinite}\n        @keyframes cxPuppyBlink { 0%, 40%, 46%, 100% { transform: scaleY(1); } 43%, 44% { transform: scaleY(.06); } }
+        @keyframes cxPuppyKickLeft { 0%,100%{transform:rotate(0)} 35%{transform:rotate(-28deg) translate(-5px,-3px)} 65%{transform:rotate(8deg)} }\n        @keyframes cxPuppyKickRight { 0%,100%{transform:rotate(0)} 35%{transform:rotate(28deg) translate(5px,-3px)} 65%{transform:rotate(-8deg)} }\n        @keyframes cxPuppyFetch { from{transform:translateY(1px) scaleY(.99)} to{transform:translateY(3px) scaleY(1.01)} }\n        .cx-puppy-fetch-stance{transform-origin:50% 90%;animation:cxPuppyFetch .5s ease-in-out infinite alternate}\n        .cx-puppy-kick-left{transform-box:fill-box;transform-origin:90% 15%;animation:cxPuppyKickLeft .55s ease-in-out infinite}\n        .cx-puppy-kick-right{transform-box:fill-box;transform-origin:10% 15%;animation:cxPuppyKickRight .55s ease-in-out infinite}\n        @keyframes cxPuppyBlink { 0%, 40%, 46%, 100% { transform: scaleY(1); } 43%, 44% { transform: scaleY(.06); } }
         @keyframes cxPuppyBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes cxPuppyTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(20deg)} }
         @keyframes cxPuppyJump { 0%,100%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-42px) rotate(-9deg)} 70%{transform:translateY(-20px) rotate(7deg)} }
