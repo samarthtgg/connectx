@@ -365,6 +365,7 @@ export default function ConnectXPuppy() {
               {mood === "think" && <><circle cx="105" cy="23" r="3" fill="#c4b5fd"/><text x="99" y="15" fill="#c4b5fd" fontSize="13">?</text></>}
               {mood === "cry" && <text x="94" y="17" fill="#60a5fa" fontSize="14">😭</text>}\n              {mood === "wave" && <path d="M91 79 Q105 67 104 54" fill="none" stroke="#e2e8f0" strokeWidth="5" strokeLinecap="round"/>}
             </svg>
+            <button type="button" aria-label="Talk to Puppy" title="Talk to Puppy" onPointerDown={event => event.stopPropagation()} onClick={startListening} className="absolute -bottom-2 -right-1 rounded-full border border-white/20 bg-slate-950/95 px-2 py-1 text-xs text-white shadow-lg">🎙️</button>
           </div>
         </div>
       )}
