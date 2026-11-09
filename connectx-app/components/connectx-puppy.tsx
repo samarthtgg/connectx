@@ -19,6 +19,7 @@ export default function ConnectXPuppy() {
   const [listening, setListening] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [puppyMenuOpen, setPuppyMenuOpen] = useState(false);
   const [eyesClosed, setEyesClosed] = useState(false);
   const [lastInteraction, setLastInteraction] = useState(0);
   const [ballPlaying, setBallPlaying] = useState(false);
@@ -81,7 +82,7 @@ export default function ConnectXPuppy() {
 
   useEffect(() => {
     if (!injuredUntil) return;
-    const tick = () => { const left = Math.max(0, Math.ceil((injuredUntil - Date.now()) / 1000)); setRemainingSeconds(left); if (left === 0) { setInjuredUntil(0); localStorage.removeItem("cx-puppy-injured-until-v1"); setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); } };
+    const tick = () => { const left = Math.max(0, Math.ceil((injuredUntil - Date.now()) / 1000)); setRemainingSeconds(left); if (left === 0) { setInjuredUntil(0); localStorage.removeItem("cx-puppy-injured-until-v1"); setVisible(false); setPuppyMenuOpen(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); } };
     tick(); const timer = window.setInterval(tick, 1000); return () => window.clearInterval(timer);
   }, [injuredUntil]);
 
@@ -208,7 +209,11 @@ export default function ConnectXPuppy() {
     const startY = Math.max(18, Math.min(window.innerHeight - 46, position.y + 74));
     setKickSide(side => side === "left" ? "right" : "left");
     setBallPlaying(true);
-    setBallFlight({ x: startX, y: startY, vx: (Math.random() > 0.5 ? 1 : -1) * (5.5 + Math.random() * 5), vy: -8 - Math.random() * 5, bounces: 0, returning: false });
+    // Pick one of ten evenly spaced launch directions for every fetch.
+    const direction = Math.floor(Math.random() * 10);
+    const angle = (direction / 10) * Math.PI * 2;
+    const speed = 8 + Math.random() * 4.5;
+    setBallFlight({ x: startX, y: startY, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, bounces: 0, returning: false });
   };
   startBallFetchRef.current = startBallFetch;
 
@@ -337,7 +342,7 @@ export default function ConnectXPuppy() {
             onPointerCancel={finishDrag}
             onDoubleClick={() => { if (injuredUntil <= Date.now()) changeColor(); }}
             onTouchEnd={() => { const now = Date.now(); if (now - lastTap.current < 330) changeColor(); lastTap.current = now; }}
-            onClick={() => { if (injuredUntil > Date.now()) return; interact(); if (shrinkTimer.current) clearTimeout(shrinkTimer.current); setCompact(false); shrinkTimer.current = setTimeout(() => setCompact(true), 3000); }}
+            onClick={() => { if (injuredUntil > Date.now()) return; interact(); setPuppyMenuOpen(open => !open); if (shrinkTimer.current) clearTimeout(shrinkTimer.current); setCompact(false); shrinkTimer.current = setTimeout(() => setCompact(true), 3000); }}
             className={`relative cursor-grab active:cursor-grabbing transition-transform duration-700 ease-in-out ${compact ? "h-[76px] w-[76px]" : "h-[112px] w-[112px]"}`}
             style={{ touchAction: "none" }}
             aria-label="ConnectX puppy. Drag to move; double tap to change colour."
@@ -365,8 +370,13 @@ export default function ConnectXPuppy() {
               {mood === "think" && <><circle cx="105" cy="23" r="3" fill="#c4b5fd"/><text x="99" y="15" fill="#c4b5fd" fontSize="13">?</text></>}
               {mood === "cry" && <text x="94" y="17" fill="#60a5fa" fontSize="14">😭</text>}\n              {mood === "wave" && <path d="M91 79 Q105 67 104 54" fill="none" stroke="#e2e8f0" strokeWidth="5" strokeLinecap="round"/>}
             </svg>
-            <button type="button" aria-label="Talk to Puppy" title="Talk to Puppy" onPointerDown={event => event.stopPropagation()} onClick={startListening} className="absolute -bottom-2 -right-1 rounded-full border border-white/20 bg-slate-950/95 px-2 py-1 text-xs text-white shadow-lg">🎙️</button>
           </div>
+          {puppyMenuOpen && (
+            <div className="absolute left-1/2 top-full z-[120] mt-2 flex -translate-x-1/2 gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-2 shadow-2xl">
+              <button type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setPuppyMenuOpen(false); startListening(); }} className="whitespace-nowrap rounded-xl bg-cyan-500/20 px-3 py-2 text-xs font-semibold text-cyan-100">🎙️ Speak</button>
+              <button type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setPuppyMenuOpen(false); setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); }} className="whitespace-nowrap rounded-xl bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-100">Hide</button>
+            </div>
+          )}
         </div>
       )}
       <style jsx global>{`
