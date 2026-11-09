@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const siteUrl = "https://connectx-sandy.vercel.app";
+const siteUrl = "https://connectx-samarthtgg.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
