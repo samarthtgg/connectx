@@ -30,7 +30,8 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return !APP_HOST.equals(request.getUrl().getHost());
+                // Let WebView follow HTTPS redirects and site navigation, including auth/API hosts.
+                return false;
             }
         });
 
