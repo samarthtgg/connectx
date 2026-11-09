@@ -244,46 +244,6 @@ export default function Home() {
         )}
       </section>
 
-      <section aria-labelledby="connectx-about-heading" className="mx-auto mt-12 w-full max-w-3xl space-y-8 text-center">
-        <div>
-          <h2 id="connectx-about-heading" className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            A simple place to stay connected
-          </h2>
-          <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
-            ConnectX is a messaging app for keeping in touch with the people who matter.
-            Find friends by username, send private messages, and bring people together in group conversations.
-          </p>
-        </div>
-        <div className="grid gap-6 text-left sm:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-            <h3 className="font-semibold text-white">Private and group chats</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Have one-to-one conversations or create group chats to keep everyone in the loop.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-            <h3 className="font-semibold text-white">Voice and video calls</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Catch up with friends through voice and video calling.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-            <h3 className="font-semibold text-white">Share status updates</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Share updates and let friends know what is happening.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-            <h3 className="font-semibold text-white">Find people by username</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Find the people you know and start a conversation on ConnectX.
-            </p>
-          </div>
-        </div>
-        <p className="text-sm text-slate-400">
-          Learn more about <a href="/about" className="font-medium text-indigo-300 underline underline-offset-4 hover:text-indigo-200">ConnectX chat and messaging features</a>.
-        </p>
-      </section>
     </main>
   );
 }
