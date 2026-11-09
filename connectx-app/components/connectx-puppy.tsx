@@ -358,7 +358,7 @@ export default function ConnectXPuppy() {
               {ballPlaying && <g className="cx-puppy-ball"><circle cx="108" cy="91" r="9" fill="#fb923c" stroke="#fff" strokeWidth="1.5"/><path d="M100 87 Q108 91 116 87 M100 95 Q108 91 116 95" fill="none" stroke="#fff" strokeWidth="1.4"/></g>}
               {ballPlaying ? <g className="cx-puppy-four-legs">
                 <path d="M43 73 Q36 80 39 95 L48 98 L53 78Z M73 77 L80 96 L89 96 Q91 80 83 73Z" fill="#dbeafe" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round"/>
-                <path d="M47 78 Q41 88 44 100 L54 101 L58 82Z M69 82 L74 100 L84 100 Q86 87 79 78Z" fill="#f1f5f9" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round"/>
+                <path d={kickSide === "left" ? "M69 82 L74 100 L84 100 Q86 87 79 78Z" : "M47 78 Q41 88 44 100 L54 101 L58 82Z"} fill="#f1f5f9" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round"/>
                 <path className={kickSide === "left" ? "cx-puppy-kick-left" : "cx-puppy-kick-right"} d={kickSide === "left" ? "M47 82 Q39 91 29 91 L25 97 L34 101 Q49 100 58 88Z" : "M73 82 Q81 91 91 91 L95 97 L86 101 Q71 100 62 88Z"} fill="#f1f5f9" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round"/>
               </g> : <path d="M43 82 Q34 94 45 99 L56 99 Q63 94 55 84 M76 84 Q69 95 80 100 L91 99 Q98 93 87 81" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="2"/>}
               {mood === "sleep" && <><path d="M49 56 Q55 60 60 56 M70 56 Q76 60 81 56" fill="none" stroke="#172033" strokeWidth="2"/><text x="94" y="17" fill="#c4b5fd" fontSize="15">Zz</text></>}
