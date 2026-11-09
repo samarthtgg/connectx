@@ -327,6 +327,8 @@ export default function ConnectXPuppy() {
 
   if (!visible) return <button type="button" disabled={remainingSeconds > 0} onClick={() => { if (injuredUntil > Date.now()) return; setVisible(true); localStorage.setItem("cx-puppy-hidden-v1","false"); showBubble("I am back! 🐾", 2000); }} className="fixed bottom-24 right-4 z-[100] rounded-full border border-cyan-300/30 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-cyan-200 shadow-xl disabled:cursor-not-allowed disabled:opacity-70">{remainingSeconds > 0 ? "Puppy resting 🩹 " + Math.floor(remainingSeconds / 60) + ":" + String(remainingSeconds % 60).padStart(2, "0") : "Show puppy 🐾"}</button>;
 
+  if (pathname === "/") return null;
+
   return (
     <>
       {ballFlight && <div aria-hidden="true" className="pointer-events-none fixed z-[99] h-7 w-7 rounded-full border-2 border-white/90 bg-orange-400 shadow-[0_5px_12px_rgba(0,0,0,.45)]" style={{ left: ballFlight.x, top: ballFlight.y, transform: "rotate(" + (ballFlight.x * 3) + "deg)" }}><span className="absolute inset-x-1 top-1/2 h-[2px] -translate-y-1/2 rotate-45 bg-white/90"/><span className="absolute inset-x-1 top-1/2 h-[2px] -translate-y-1/2 -rotate-45 bg-white/90"/></div>}
