@@ -26,6 +26,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [verificationPending, setVerificationPending] = useState(false);
   const [resending, setResending] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
 
   const checks = useMemo(
     () => passwordChecks.map((item) => ({ ...item, passed: item.test(password) })),
@@ -112,6 +113,21 @@ export default function Home() {
         : message, "error");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function signInWithPasskey() {
+    setPasskeyLoading(true);
+    setMessage("");
+    try {
+      const { data, error } = await supabase.auth.signInWithPasskey();
+      if (error) throw error;
+      setUser(data.user);
+      showMessage("Signed in securely with your device passkey.", "success");
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "Passkey sign-in failed. Use your email and password instead.", "error");
+    } finally {
+      setPasskeyLoading(false);
     }
   }
 
