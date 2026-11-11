@@ -60,7 +60,7 @@ type MessageReaction = { id: string; message_id: string; user_id: string; emoji:
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null; nickname?: string | null };
 type RecentChat = { profile: Profile; preview: string; lastMessageAt: string; unreadCount: number };
 type ChatGroup = { id: string; name: string; description: string | null; avatar_url: string | null; created_by: string; created_at: string; my_role?: string };
-type ScheduledMessage = { id:string; receiver_id:string|null; group_id:string|null; content:string; scheduled_for:string; sent_at:string|null; failure_reason:string|null };\ntype GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean; reply_to_id?: string | null; reply_to_content?: string | null; reply_to_sender_id?: string | null };
+type GroupMessage = { id: string; group_id: string; sender_id: string; content: string; created_at: string; edited_at: string | null; deleted_for_everyone: boolean; reply_to_id?: string | null; reply_to_content?: string | null; reply_to_sender_id?: string | null };
 
 const displayName = (profile: Profile) =>
   profile.full_name?.trim() || profile.username || "ConnectX user";
@@ -540,7 +540,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const [search, setSearch] = useState("");
   const [usernameSearchProfile, setUsernameSearchProfile] = useState<Profile | null>(null);
   const [usernameSearchLoading, setUsernameSearchLoading] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);\n  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>([]);\n  const [scheduleWhen, setScheduleWhen] = useState(() => { const d=new Date(Date.now()+300000-new Date().getTimezoneOffset()*60000); return d.toISOString().slice(0,16); });\n  const [scheduleBusy, setScheduleBusy] = useState(false);\n  const [scheduleEditId, setScheduleEditId] = useState<string|null>(null);\n  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -1169,46 +1169,6 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
       if (kind === "direct") setTimeout(() => document.querySelector<HTMLTextAreaElement>(".composer textarea.composer-textarea")?.focus(), 0);
       else setTimeout(() => document.querySelector<HTMLTextAreaElement>(".composer textarea.composer-textarea")?.focus(), 0);
     }
-  }
-
-  async function loadScheduledMessages() {
-    if (!userId) return;
-    let q = supabase.from("scheduled_messages").select("id,receiver_id,group_id,content,scheduled_for,sent_at,failure_reason").eq("sender_id",userId).is("sent_at",null).order("scheduled_for");
-    if (selectedGroup) q=q.eq("group_id",selectedGroup.id); else if (selectedFriend) q=q.eq("receiver_id",selectedFriend.id);
-    const {data,error}=await q; if(error) throw error; setScheduledMessages((data??[]) as ScheduledMessage[]);
-  }
-  async function openSchedule() {
-    if ((!selectedFriend&&!selectedGroup)||!userId) return;
-    setScheduleEditId(null);
-    const d=new Date(Date.now()+300000-new Date().getTimezoneOffset()*60000); setScheduleWhen(d.toISOString().slice(0,16));
-    setScheduleOpen(true); try { await loadScheduledMessages(); } catch(e) { setError(e instanceof Error?e.message:"Could not load scheduled messages."); }
-  }
-  async function saveScheduledMessage() {
-    const content=selectedGroup?groupDraft.trim():draft.trim();
-    if(!content||!userId||(!selectedFriend&&!selectedGroup))return;
-    const ms=new Date(scheduleWhen).getTime();
-    if(!Number.isFinite(ms)||ms<=Date.now()+30000){setError("Choose a time at least 1 minute in the future.");return;}
-    setScheduleBusy(true);setError("");
-    try {
-      const scheduled_for=new Date(ms).toISOString();
-      const result=scheduleEditId
-        ? await supabase.from("scheduled_messages").update({content,scheduled_for}).eq("id",scheduleEditId).eq("sender_id",userId)
-        : await supabase.from("scheduled_messages").insert({sender_id:userId,receiver_id:selectedFriend?.id??null,group_id:selectedGroup?.id??null,content,scheduled_for,sent_at:null,failure_reason:null});
-      if(result.error)throw result.error;
-      if(selectedGroup)setGroupDraft("");else setDraft("");
-      setScheduleOpen(false);setScheduleEditId(null);await loadScheduledMessages();
-      setNotice("Message scheduled for "+new Date(ms).toLocaleString()+".");
-    } catch(e){setError(e instanceof Error?e.message:"Could not schedule message.");}
-    finally{setScheduleBusy(false);}
-  }
-  async function cancelScheduledMessage(id:string) {
-    if(!userId)return;
-    const {error}=await supabase.from("scheduled_messages").delete().eq("id",id).eq("sender_id",userId).is("sent_at",null);
-    if(error){setError(error.message);return;}setScheduledMessages(old=>old.filter(item=>item.id!==id));setNotice("Scheduled message cancelled.");
-  }
-  function editScheduledMessage(item:ScheduledMessage) {
-    setScheduleEditId(item.id);const d=new Date(new Date(item.scheduled_for).getTime()-new Date().getTimezoneOffset()*60000);
-    setScheduleWhen(d.toISOString().slice(0,16));if(item.group_id)setGroupDraft(item.content);else setDraft(item.content);setScheduleOpen(true);
   }
 
   async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {  async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {
@@ -2935,7 +2895,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
 <label>Options <small>2–10 options</small></label><div className="poll-option-fields">{pollOptionsDraft.map((option,index)=><div className="poll-option-row" key={index}><input aria-label={"Option "+(index+1)} value={option} maxLength={100} onChange={e=>setPollOptionsDraft(current=>current.map((item,i)=>i===index?e.target.value:item))} placeholder={"Option "+(index+1)} />{pollOptionsDraft.length>2&&<button type="button" className="poll-remove-option" aria-label={"Remove option "+(index+1)} onClick={()=>setPollOptionsDraft(current=>current.filter((_,i)=>i!==index))}>×</button>}</div>)}</div>
 {pollOptionsDraft.length<10&&<button type="button" className="poll-add-option" onClick={()=>setPollOptionsDraft(current=>[...current,""])}>＋ Add option</button>}
 <div className="poll-setting-row"><span>Allow multiple answers</span><input type="checkbox" checked={pollAllowMultipleAnswers} onChange={e=>setPollAllowMultipleAnswers(e.target.checked)} /></div><div className="poll-setting-row"><span>Hide voter names</span><input type="checkbox" checked={pollHideVoterNames} onChange={e=>setPollHideVoterNames(e.target.checked)} /></div>
-<button type="button" className="action-btn poll-send-btn" disabled={!pollQuestion.trim()||pollOptionsDraft.filter(x=>x.trim()).length<2||groupPostBusy} onClick={()=>void createGroupPoll()}>{groupPostBusy?"Sending…":"➤ Send poll"}</button></div>}</section></div>}<form className="composer group-composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<button type="button" className="group-more-btn" aria-label="More group actions" onClick={()=>{setShowGroupTools(v=>!v);setGroupToolTab(null);}}>⋮</button><textarea className="composer-textarea" rows={1} value={groupDraft} onChange={(e) => { setGroupDraft(e.target.value); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, window.innerHeight * 0.35)}px`; }} placeholder="Message the group…" maxLength={5000} aria-label="Group message" /><button type="button" className="composer-inline-icon" aria-label="Schedule message" title="Schedule message" onClick={() => void openSchedule()}>◷</button><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
+<button type="button" className="action-btn poll-send-btn" disabled={!pollQuestion.trim()||pollOptionsDraft.filter(x=>x.trim()).length<2||groupPostBusy} onClick={()=>void createGroupPoll()}>{groupPostBusy?"Sending…":"➤ Send poll"}</button></div>}</section></div>}<form className="composer group-composer" onSubmit={sendGroupMessage}>{replyTarget?.kind === "group" && <div className="reply-compose"><span><strong>Replying to {replyTarget.sender_id === userId ? "yourself" : "message"}</strong><small>{replyTarget.content}</small></span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply">×</button></div>}<button type="button" className="group-more-btn" aria-label="More group actions" onClick={()=>{setShowGroupTools(v=>!v);setGroupToolTab(null);}}>⋮</button><textarea className="composer-textarea" rows={1} value={groupDraft} onChange={(e) => { setGroupDraft(e.target.value); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, window.innerHeight * 0.35)}px`; }} placeholder="Message the group…" maxLength={5000} aria-label="Group message" /><button className="send" disabled={!groupDraft.trim() || busy}>➤</button></form>
         </> : selectedFriend && tab === "Messages" ? <>
           <header className="conversation-head">
             <button className="back-btn" onClick={() => setShowMobileChat(false)}>‹</button>
@@ -3232,17 +3192,6 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
 
 
     
-      {scheduleOpen && <div className="cx-modal-backdrop" role="presentation" onClick={() => setScheduleOpen(false)}>
-        <section className="cx-modal-card" role="dialog" aria-modal="true" aria-labelledby="schedule-message-title" onClick={event => event.stopPropagation()} style={{maxWidth:480,width:"calc(100% - 28px)",padding:20,borderRadius:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}><h2 id="schedule-message-title" style={{margin:0}}>◷ Scheduled messages</h2><button type="button" className="mini-btn" onClick={() => setScheduleOpen(false)}>Close</button></div>
-          <p style={{opacity:.72,fontSize:13}}>Choose when ConnectX should send this message. Times use your device’s local time.</p>
-          <label className="profile-field">Date and time<input type="datetime-local" min={new Date(Date.now()+60000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)} value={scheduleWhen} onChange={event=>setScheduleWhen(event.target.value)} /></label>
-          <button type="button" className="action-btn" disabled={scheduleBusy || !(selectedGroup ? groupDraft.trim() : draft.trim())} onClick={() => void saveScheduledMessage()}>{scheduleBusy ? "Saving…" : scheduleEditId ? "Save changes" : "Schedule message"}</button>
-          <div style={{marginTop:18,borderTop:"1px solid var(--border,rgba(128,128,128,.25))",paddingTop:14}}><strong>Upcoming messages</strong>
-            {scheduledMessages.length===0?<p style={{fontSize:13,opacity:.65}}>No scheduled messages in this chat.</p>:scheduledMessages.map(item=><div key={item.id} style={{padding:"10px 0",borderBottom:"1px solid var(--border,rgba(128,128,128,.2))"}}><div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{item.content}</div><small style={{opacity:.65}}>{new Date(item.scheduled_for).toLocaleString()}{item.failure_reason?" · "+item.failure_reason:""}</small><div style={{display:"flex",gap:8,marginTop:7}}><button type="button" className="mini-btn" onClick={()=>editScheduledMessage(item)}>Edit</button><button type="button" className="mini-btn" onClick={()=>void cancelScheduledMessage(item.id)}>Cancel</button></div></div>)}
-          </div>
-        </section>
-      </div>}
 </main>
   );
 }
