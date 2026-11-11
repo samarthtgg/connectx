@@ -288,6 +288,9 @@ export default function ConnectXPuppy() {
     say(`New colour ${next + 1} of 20! 🎨`, "wave");
   };
 
+  // Puppy is available only on the main ConnectX home screen, never on login or other routes.
+  if (pathname !== "/chat-preview") return null;
+
   if (injuryPreview) return (
     <div className="puppy-injury-scene fixed bottom-24 right-4 z-[110] flex w-64 flex-col items-center rounded-3xl border border-rose-300/30 bg-slate-950/95 p-4 text-center text-white shadow-2xl">
       <style>{`
