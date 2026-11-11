@@ -54,6 +54,7 @@ type DirectMessage = {
   expires_at?: string | null;
   media_url?: string | null;
 };
+type ScheduledDirectMessage = { id: string; content: string; scheduled_for: string; created_at: string };
 type StatusUpdate = { id:string; user_id:string; caption:string|null; media_url:string|null; media_type:"text"|"image"|"video"; created_at:string; expires_at:string; audience?:"friends"|"close_friends"; };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type ChatPreference = { friend_id: string; cleared_at: string | null; hidden_at: string | null; is_pinned?: boolean; is_archived?: boolean; unread_at?: string | null; draft?: string | null; nickname?: string | null };
@@ -343,6 +344,10 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const typingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledDirectMessage[]>([]);
+  const [scheduledBusy, setScheduledBusy] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ url: string; name: string } | null>(null);
   const [friendProfile, setFriendProfile] = useState<Profile | null>(null);
   const [commonGroups, setCommonGroups] = useState<ChatGroup[]>([]);
@@ -539,6 +544,19 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!userId || !selectedFriend) { setScheduledMessages([]); return; }
+    void supabase.from("scheduled_messages").select("id,content,scheduled_for,created_at")
+      .eq("sender_id", userId).eq("receiver_id", selectedFriend.id).is("sent_at", null).is("group_id", null)
+      .order("scheduled_for", { ascending: true }).then(({ data, error: loadError }) => {
+        if (!active) return;
+        if (loadError) { setError(loadError.message); return; }
+        setScheduledMessages((data ?? []) as ScheduledDirectMessage[]);
+      });
+    return () => { active = false; };
+  }, [userId, selectedFriend?.id]);
+
   useEffect(() => {
     if (!attachment) { setAttachmentPreview(""); return; }
     const previewUrl = URL.createObjectURL(attachment);
@@ -1977,6 +1995,38 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     finally{setBusy(false);}
   }
 
+  async function scheduleDirectMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const friend = selectedFriend, content = draft.trim(), scheduledDate = new Date(scheduleAt);
+    if (!friend || !userId || !content || scheduledBusy) return;
+    if (blockedWithSelected) { setError("You cannot schedule messages because one of you has blocked the other."); return; }
+    if (friend.is_private && friend.id !== userId && !acceptedIds.has(friend.id)) { setError("This private profile only accepts messages from friends."); return; }
+    if (!scheduleAt || !Number.isFinite(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) { setError("Choose a future date and time."); return; }
+    setScheduledBusy(true); setError("");
+    try {
+      const { data, error: saveError } = await supabase.from("scheduled_messages")
+        .insert({ sender_id: userId, receiver_id: friend.id, content, scheduled_for: scheduledDate.toISOString() })
+        .select("id,content,scheduled_for,created_at").single();
+      if (saveError) throw saveError;
+      setScheduledMessages(current => [...current, data as ScheduledDirectMessage].sort((a,b)=>a.scheduled_for.localeCompare(b.scheduled_for)));
+      setDraft(""); setScheduleAt(""); setScheduleOpen(false);
+      setNotice("Message scheduled. ConnectX will send it automatically at the selected time.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not schedule this message."); }
+    finally { setScheduledBusy(false); }
+  }
+
+  async function cancelScheduledMessage(id: string) {
+    if (!userId || scheduledBusy) return;
+    setScheduledBusy(true);
+    try {
+      const { error: deleteError } = await supabase.from("scheduled_messages").delete().eq("id", id).eq("sender_id", userId).is("sent_at", null);
+      if (deleteError) throw deleteError;
+      setScheduledMessages(current => current.filter(item => item.id !== id));
+      setNotice("Scheduled message cancelled.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not cancel the scheduled message."); }
+    finally { setScheduledBusy(false); }
+  }
+
   async function sendMessage(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     const text = draft.trim();
@@ -2921,6 +2971,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
                 <button type="button" className="composer-inline-icon" aria-label="Insert emoji" onClick={()=>setDraft(current=>current+"😊")}>☺</button>
                 <button type="button" className="composer-inline-icon" aria-label="Attach photo or video" onClick={()=>attachmentInputRef.current?.click()}>⌁</button>
               </div>}
+              {draft.trim() && !attachment && <button type="button" className="composer-inline-icon" title="Schedule message" aria-label="Schedule message" disabled={!selectedFriend || busy || !userId} onClick={() => { setScheduleAt(""); setScheduleOpen(true); }}>◷</button>}
               {draft.trim()||attachment ? <button type="submit" className="composer-send-btn" disabled={busy||!selectedFriend||!userId} aria-label="Send message">{busy?"…":"➤"}</button> : voiceBlob ? <span className="voice-ready-indicator">Voice ready</span> : <button type="button" className="mic-btn" disabled={busy||!!voiceBlob||!!attachment} onPointerDown={handleVoicePointerDown} onPointerMove={handleVoicePointerMove} onPointerUp={handleVoicePointerUp} onPointerCancel={handleVoicePointerCancel} aria-label="Hold to record a voice message">🎙</button>}
             </div>
             {attachment && <div className="attachment-preview">
@@ -3082,6 +3133,27 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             <button className="hangup" onClick={endCall}>End call</button>
           </div>
         </div>
+      </div>}
+
+      {scheduleOpen && selectedFriend && <div className="profile-modal-backdrop" role="dialog" aria-modal="true" aria-label="Schedule message" onClick={() => !scheduledBusy && setScheduleOpen(false)}>
+        <section className="friend-profile-card" onClick={event => event.stopPropagation()}>
+          <header className="friend-profile-topbar"><button type="button" onClick={() => setScheduleOpen(false)} aria-label="Close">‹</button><strong>Scheduled messages</strong><span /></header>
+          <form className="friend-profile-section" onSubmit={scheduleDirectMessage}>
+            <small>NEW SCHEDULE</small><p>Write now, choose a date and time, and send automatically.</p>
+            <textarea rows={4} maxLength={5000} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Write your message…" required />
+            <label style={{display:"block",marginTop:12}}>Send date and time
+              <input style={{display:"block",width:"100%",marginTop:6}} type="datetime-local" required min={new Date(Date.now()-new Date().getTimezoneOffset()*60000+60000).toISOString().slice(0,16)} value={scheduleAt} onChange={event=>setScheduleAt(event.target.value)} />
+            </label>
+            <button type="submit" disabled={scheduledBusy || !draft.trim() || !scheduleAt}>{scheduledBusy ? "Scheduling…" : "Schedule message"}</button>
+          </form>
+          <div className="friend-profile-section"><small>UPCOMING · {scheduledMessages.length}</small>
+            {scheduledMessages.length ? scheduledMessages.map(item => <div key={item.id} style={{display:"flex",gap:10,alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid var(--border,#ddd)"}}>
+              <div style={{minWidth:0}}><strong style={{display:"block",overflowWrap:"anywhere"}}>{item.content}</strong><span>{new Date(item.scheduled_for).toLocaleString()}</span></div>
+              <button type="button" disabled={scheduledBusy} onClick={()=>void cancelScheduledMessage(item.id)}>Cancel</button>
+            </div>) : <p>No upcoming messages.</p>}
+          </div>
+          <p className="friend-profile-section">Messages are sent in the background, even if you close the app. Scheduling currently supports text messages in direct chats.</p>
+        </section>
       </div>}
 
       {(error || notice) && <div className={error ? "toast error-toast" : "toast"} role="status">
