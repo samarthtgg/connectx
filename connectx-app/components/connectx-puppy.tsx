@@ -330,7 +330,6 @@ export default function ConnectXPuppy() {
 
   if (!visible) return <button type="button" disabled={remainingSeconds > 0} onClick={() => { if (injuredUntil > Date.now()) return; setVisible(true); localStorage.setItem("cx-puppy-hidden-v1","false"); showBubble("I am back! 🐾", 2000); }} className="fixed bottom-24 right-4 z-[100] rounded-full border border-cyan-300/30 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-cyan-200 shadow-xl disabled:cursor-not-allowed disabled:opacity-70">{remainingSeconds > 0 ? "Puppy resting 🩹 " + Math.floor(remainingSeconds / 60) + ":" + String(remainingSeconds % 60).padStart(2, "0") : "Show puppy 🐾"}</button>;
 
-  if (pathname === "/") return null;
 
   return (
     <>
