@@ -232,6 +232,17 @@ export default function Home() {
             </form>
 
             {mode === "login" && (
+              <button
+                type="button"
+                onClick={signInWithPasskey}
+                disabled={passkeyLoading}
+                className="mt-4 w-full rounded-xl border border-indigo-400/40 bg-indigo-400/10 px-4 py-3 font-semibold text-indigo-200 transition hover:bg-indigo-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {passkeyLoading ? "Waiting for device…" : "Sign in with face / fingerprint"}
+              </button>
+            )}
+
+            {mode === "login" && (
               <button type="button" onClick={() => changeMode("forgot")} className="mt-4 w-full text-center text-sm font-medium text-indigo-300 hover:text-indigo-200">Forgot password? Send an email reset link</button>
             )}
 
