@@ -286,6 +286,8 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const [chatLockSupported, setChatLockSupported] = useState(false);
   const [chatLockBusy, setChatLockBusy] = useState(false);
   const [showLockedChats, setShowLockedChats] = useState(false);
+  const [accountPasskeys, setAccountPasskeys] = useState<Array<{ id: string; friendly_name?: string | null }>>([]);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   useEffect(() => {
     try {
       setChatLockIds(JSON.parse(localStorage.getItem("connectx-chat-locks-" + userId) || "[]"));
@@ -293,6 +295,47 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
       setChatLockSupported(typeof window !== "undefined" && !!window.PublicKeyCredential && !!navigator.credentials);
     } catch { setChatLockIds([]); setChatLockCredential(null); }
   }, [userId]);
+
+  useEffect(() => {
+    let active = true;
+    if (userId) {
+      void supabase.auth.passkey.list().then(({ data, error }) => {
+        if (!active || error) return;
+        setAccountPasskeys((data || []) as Array<{ id: string; friendly_name?: string | null }>);
+      }).catch(() => {});
+    } else {
+      setAccountPasskeys([]);
+    }
+    return () => { active = false; };
+  }, [userId]);
+
+  async function addAccountPasskey() {
+    if (!userId || passkeyBusy) return;
+    setPasskeyBusy(true); setError(""); setNotice("");
+    try {
+      const { error: registerError } = await supabase.auth.registerPasskey();
+      if (registerError) throw registerError;
+      const { data: listed, error: listError } = await supabase.auth.passkey.list();
+      if (listError) throw listError;
+      setAccountPasskeys((listed || []) as Array<{ id: string; friendly_name?: string | null }>);
+      setNotice("Device passkey connected. Your phone will choose an available secure method, such as fingerprint, face recognition or screen lock.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not connect a device passkey.");
+    } finally { setPasskeyBusy(false); }
+  }
+
+  async function removeAccountPasskey(passkeyId: string) {
+    if (passkeyBusy) return;
+    setPasskeyBusy(true); setError(""); setNotice("");
+    try {
+      const { error: deleteError } = await supabase.auth.passkey.delete({ passkeyId });
+      if (deleteError) throw deleteError;
+      setAccountPasskeys((current) => current.filter((item) => item.id !== passkeyId));
+      setNotice("Device passkey removed from your ConnectX account.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not remove this passkey.");
+    } finally { setPasskeyBusy(false); }
+  }
 
   const [reactionMessage, setReactionMessage] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2555,7 +2598,10 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             <div className="settings-section-title"><span>02</span> {tr("Appearance").toUpperCase()}</div>
             <label className="privacy-option"><span><strong>{tr("Dark mode")}</strong><small>{tr("Use a darker theme across ConnectX")}</small></span><input type="checkbox" checked={darkMode} onChange={(e) => setDarkMode(e.target.checked)} /></label>
             <div className="settings-section-title"><span>03</span> {tr("Chat lock & security").toUpperCase()}</div>
-            <div className="privacy-option"><span><strong>{tr("Fingerprint / biometric verification")}</strong><small>Required before opening your locked chats. Uses your device's passkey prompt.</small></span><button type="button" className="mini-btn" disabled={chatLockBusy || !chatLockSupported} onClick={() => void enrollChatLock()}>{chatLockCredential ? tr("Set up again") : tr("Enable")}</button></div>
+            <div className="privacy-option"><span><strong>Face / fingerprint sign-in</strong><small>Connect a passkey to your ConnectX account. Your device handles biometric verification; ConnectX never receives your face or fingerprint data.</small></span><button type="button" className="mini-btn" disabled={passkeyBusy || !chatLockSupported} onClick={() => void addAccountPasskey()}>{passkeyBusy ? "Please wait…" : "Connect"}</button></div>
+            {accountPasskeys.map((item, index) => <div className="privacy-option" key={item.id}><span><strong>{item.friendly_name || `This device passkey ${index + 1}`}</strong><small>Account sign-in passkey</small></span><button type="button" className="mini-btn" disabled={passkeyBusy} onClick={() => void removeAccountPasskey(item.id)}>Remove</button></div>)}
+            <small className="profile-hint">Your phone decides which secure method is available: fingerprint, face recognition, PIN or screen lock. Email and password remain available.</small>
+            <div className="privacy-option"><span><strong>{tr("Fingerprint / biometric verification")}</strong><small>Extra verification for opening your locked chats on this device.</small></span><button type="button" className="mini-btn" disabled={chatLockBusy || !chatLockSupported} onClick={() => void enrollChatLock()}>{chatLockCredential ? tr("Set up again") : tr("Enable")}</button></div>
             {!chatLockSupported && <small className="profile-hint">{tr("Biometric/passkey authentication is not available in this browser. Try a supported browser on a device with screen lock enabled.")}</small>}
             {chatLockCredential && <small className="profile-hint">{tr("Verification is configured on this device. Locked chats:")} {chatLockIds.length}.</small>}
             <div className="settings-section-title"><span>04</span> {tr("Privacy").toUpperCase()}</div>
