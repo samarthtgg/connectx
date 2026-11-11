@@ -1171,7 +1171,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     }
   }
 
-  async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {  async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {
+  async function sendGroupMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = groupDraft.trim();
     const group = selectedGroup;
@@ -3191,7 +3191,6 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
       </div>}
 
 
-    
-</main>
+    </main>
   );
 }
