@@ -3135,24 +3135,31 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
         </div>
       </div>}
 
-      {scheduleOpen && selectedFriend && <div className="profile-modal-backdrop" role="dialog" aria-modal="true" aria-label="Schedule message" onClick={() => !scheduledBusy && setScheduleOpen(false)}>
-        <section className="friend-profile-card" onClick={event => event.stopPropagation()}>
-          <header className="friend-profile-topbar"><button type="button" onClick={() => setScheduleOpen(false)} aria-label="Close">‹</button><strong>Scheduled messages</strong><span /></header>
-          <form className="friend-profile-section" onSubmit={scheduleDirectMessage}>
-            <small>NEW SCHEDULE</small><p>Write now, choose a date and time, and send automatically.</p>
-            <textarea rows={4} maxLength={5000} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Write your message…" required />
-            <label style={{display:"block",marginTop:12}}>Send date and time
-              <input style={{display:"block",width:"100%",marginTop:6}} type="datetime-local" required min={new Date(Date.now()-new Date().getTimezoneOffset()*60000+60000).toISOString().slice(0,16)} value={scheduleAt} onChange={event=>setScheduleAt(event.target.value)} />
+      {scheduleOpen && selectedFriend && <div className="schedule-modal-backdrop" role="dialog" aria-modal="true" aria-label="Schedule message" onClick={() => !scheduledBusy && setScheduleOpen(false)}>
+        <section className="schedule-composer-card" onClick={event => event.stopPropagation()}>
+          <div className="schedule-orb schedule-orb-coral" aria-hidden="true" />
+          <div className="schedule-orb schedule-orb-pink" aria-hidden="true" />
+          <header className="schedule-heading">
+            <div><h2>Scheduled</h2><p>Your words, perfectly timed</p></div>
+            <button type="button" className="schedule-close" onClick={() => !scheduledBusy && setScheduleOpen(false)} aria-label="Close scheduled messages">×</button>
+          </header>
+          <form className="schedule-form" onSubmit={scheduleDirectMessage}>
+            <label className="schedule-field-label" htmlFor="schedule-message-content">Message</label>
+            <textarea id="schedule-message-content" className="schedule-message-input" rows={3} maxLength={5000} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Write your message…" required />
+            <label className="schedule-datetime-field" htmlFor="schedule-send-at">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M7.5 3v4M16.5 3v4M4 9.5h16M12 13v4M10.5 15.5h3"/></svg>
+              <input id="schedule-send-at" type="datetime-local" required min={new Date(Date.now()-new Date().getTimezoneOffset()*60000+60000).toISOString().slice(0,16)} value={scheduleAt} onChange={event=>setScheduleAt(event.target.value)} />
             </label>
-            <button type="submit" disabled={scheduledBusy || !draft.trim() || !scheduleAt}>{scheduledBusy ? "Scheduling…" : "Schedule message"}</button>
+            <button className="schedule-submit-button" type="submit" disabled={scheduledBusy || !draft.trim() || !scheduleAt}>{scheduledBusy ? "Scheduling…" : "Schedule message"}</button>
           </form>
-          <div className="friend-profile-section"><small>UPCOMING · {scheduledMessages.length}</small>
-            {scheduledMessages.length ? scheduledMessages.map(item => <div key={item.id} style={{display:"flex",gap:10,alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid var(--border,#ddd)"}}>
-              <div style={{minWidth:0}}><strong style={{display:"block",overflowWrap:"anywhere"}}>{item.content}</strong><span>{new Date(item.scheduled_for).toLocaleString()}</span></div>
+          <section className="schedule-upcoming">
+            <div className="schedule-upcoming-heading"><span>UPCOMING</span><span>{scheduledMessages.length}</span></div>
+            {scheduledMessages.length ? scheduledMessages.map(item => <div key={item.id} className="schedule-upcoming-item">
+              <div><strong>{item.content}</strong><time>{new Date(item.scheduled_for).toLocaleString()}</time></div>
               <button type="button" disabled={scheduledBusy} onClick={()=>void cancelScheduledMessage(item.id)}>Cancel</button>
-            </div>) : <p>No upcoming messages.</p>}
-          </div>
-          <p className="friend-profile-section">Messages are sent in the background, even if you close the app. Scheduling currently supports text messages in direct chats.</p>
+            </div>) : <p className="schedule-empty">No upcoming messages. Your scheduled messages will appear here.</p>}
+          </section>
+          <p className="schedule-footnote">Messages are sent automatically at the scheduled time, even if you close the app. Text messages in direct chats are supported.</p>
         </section>
       </div>}
 
