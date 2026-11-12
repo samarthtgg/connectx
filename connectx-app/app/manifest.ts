@@ -13,6 +13,6 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#0b1020",
     theme_color: "#0b1020",
     categories: ["social", "communication"],
-    icons: [{ src: "/connectx-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
+    icons: [{ src: "/connectx-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
   };
 }
