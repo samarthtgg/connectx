@@ -2671,7 +2671,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             <div className="app-version-card" aria-label="Application version">
               <span className="app-version-mark">CX</span>
               <span className="app-version-copy"><strong>ConnectX</strong><small>{tr("Current app release")}</small></span>
-              <span className="app-version-number">v1.0.0 · Bumpy Beta</span>
+              <span className="app-version-number">v1.0.0 · Bumpy</span>
             </div>
           </form>
         ) : tab === "Status" ? (
