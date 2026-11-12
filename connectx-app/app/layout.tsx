@@ -24,6 +24,8 @@ export const metadata: Metadata = {
   description:
     "Chat with friends on ConnectX. Send private messages, join group conversations, share status updates, and connect with voice and video calls.",
   applicationName: "ConnectX",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "ConnectX", statusBarStyle: "black-translucent" },
   keywords: [
     "ConnectX",
     "ConnectX chat",
@@ -63,6 +65,8 @@ export const metadata: Metadata = {
     },
   },
 };
+
+export const viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#0b1020" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
