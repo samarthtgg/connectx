@@ -33,6 +33,10 @@ jobs:
           cache-dependency-path: connectx-app/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Audit locked dependencies
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e 'const a=require("./npm-audit.json"); console.log(JSON.stringify({metadata:a.metadata?.vulnerabilities, advisories:Object.entries(a.vulnerabilities ?? {}).map(([name,v])=>({name,severity:v.severity,range:v.range,isDirect:v.isDirect,fixAvailable:v.fixAvailable,via:v.via.map(x=>typeof x==="string"?x:{name:x.name,title:x.title,url:x.url,range:x.range})}))}, null, 2))'
       - name: Run TypeScript check
         run: npm run typecheck
       - name: Run ESLint baseline (existing violations tracked separately)
