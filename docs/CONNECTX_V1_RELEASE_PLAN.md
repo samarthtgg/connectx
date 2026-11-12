@@ -66,3 +66,15 @@ Record the deployment ID, commit SHA, build result, and alias verification befor
 ## Scope discipline
 
 Workstreams above are targets, not claims that features already exist or are complete. Audit first, prioritize defects and security, then implement in small verified changes. Keep unfinished or unverified features out of the final release announcement.
+
+## Initial audit findings — 12 November 2026
+
+- The v1.0 release branch deploys successfully to a READY Vercel preview.
+- The npm lockfile previously declared `0.1.0` while package.json declared `0.1.1`; both now align at `1.0.0-beta.1` on the release branch.
+- The production database has RLS enabled on the inspected public tables.
+- Supabase security advisors report six authenticated-callable SECURITY DEFINER RPC functions. Their current bodies include `auth.uid()` checks and ownership/group-membership checks; these must receive targeted abuse tests before changing grants or execution mode.
+- Supabase Auth leaked-password protection is disabled. This is a dashboard-level security setting and remains an open release task.
+- Performance advisors report several unindexed foreign keys and multiple permissive RLS policies. Review query patterns and policy semantics before applying indexes or consolidating policies.
+- The existing scheduled-message flow has recent failed builds on main. The restored main baseline and the release preview build successfully, but actual background delivery and cancellation still require end-to-end verification.
+
+These are audit findings, not a declaration that the listed risks are already fixed.
