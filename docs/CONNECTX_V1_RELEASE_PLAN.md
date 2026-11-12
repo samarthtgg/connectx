@@ -1,8 +1,8 @@
 # ConnectX v1.0 — Release Master Plan
 
-Status: In development  
+Status: Release candidate — pending production smoke and alias verification  
 Release branch: `release/v1.0`  
-Current development package version: `1.0.0-beta.1`  
+Release package version: `1.0.0`  
 Production remains on the last verified release until v1.0 passes the release gate.
 
 ## Release promise
@@ -48,7 +48,7 @@ ConnectX v1.0 is a major product release focused on dependable communication, pr
 
 - [ ] Full repository and database audit completed.
 - [ ] Critical and high-severity security issues resolved.
-- [ ] Production build and lint/type checks pass.
+- [x] Production build and TypeScript checks pass on the release commit. Lint and full regression testing remain open.
 - [ ] Existing core flows pass regression testing.
 - [ ] Scheduled messages verified end to end, including background delivery.
 - [ ] Both production URLs serve the exact same READY deployment.
