@@ -19,11 +19,6 @@ function displayName(profile?: Profile) {
   return profile?.full_name?.trim() || (profile?.username ? `@${profile.username}` : "ConnectX friend");
 }
 
-function localDateTimeMin() {
-  const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 60000);
-  return date.toISOString().slice(0, 16);
-}
-
 export default function ScheduledMessagesPage() {
   const [userId, setUserId] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -31,6 +26,7 @@ export default function ScheduledMessagesPage() {
   const [recipientId, setRecipientId] = useState("");
   const [content, setContent] = useState("");
   const [scheduledFor, setScheduledFor] = useState("");
+  const [minDateTime, setMinDateTime] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -50,6 +46,16 @@ export default function ScheduledMessagesPage() {
     if (scheduledResult.error) throw scheduledResult.error;
     setProfiles((profileResult.data ?? []) as Profile[]);
     setScheduled((scheduledResult.data ?? []) as ScheduledMessage[]);
+  }, []);
+
+  useEffect(() => {
+    const updateMinimum = () => {
+      const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 60000);
+      setMinDateTime(date.toISOString().slice(0, 16));
+    };
+    updateMinimum();
+    const interval = window.setInterval(updateMinimum, 30000);
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -139,7 +145,7 @@ export default function ScheduledMessagesPage() {
             <label className="sunset-label" htmlFor="scheduled-content">Message</label>
             <textarea id="scheduled-content" rows={4} maxLength={5000} value={content} onChange={event => setContent(event.target.value)} placeholder="Write your message…" required />
             <label className="sunset-label" htmlFor="scheduled-for">Send date and time</label>
-            <input id="scheduled-for" type="datetime-local" min={localDateTimeMin()} value={scheduledFor} onChange={event => setScheduledFor(event.target.value)} required />
+            <input id="scheduled-for" type="datetime-local" min={minDateTime} value={scheduledFor} onChange={event => setScheduledFor(event.target.value)} required />
             <button className="sunset-submit" type="submit" disabled={busy || loading || !userId || !recipientId || !content.trim() || !scheduledFor}>{busy ? "Scheduling…" : "Schedule message"}</button>
           </form>
         </section>
