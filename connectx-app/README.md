@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ConnectX application
 
-## Getting Started
+This directory contains the Next.js application for [ConnectX](https://connectx-samarthtgg.vercel.app), a mobile-first messaging app.
 
-First, run the development server:
+The repository-level guide is the primary documentation: [ConnectX README](../README.md). It covers setup, environment variables, Supabase configuration, Android test builds, security, and contributing.
+
+## Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Supabase Auth and backend services
+
+## Local development
+
+Requirements: Node.js 20.9 or later and npm.
+
+```bash
+npm install
+```
+
+Create `.env.local` in this directory:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
+
+Then run:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Validation
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+## Important configuration notes
 
-To learn more about Next.js, take a look at the following resources:
+- Configure Supabase Auth redirect URLs for every environment you use.
+- Apply the SQL migrations in `supabase/migrations/` to your Supabase project.
+- Deploy and configure Edge Functions separately.
+- Never expose a Supabase service-role key in browser code or a `NEXT_PUBLIC_*` variable.
+- Ensure database and Storage access is protected by appropriate Row Level Security policies.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+For the full setup and security notes, see [../README.md](../README.md).
