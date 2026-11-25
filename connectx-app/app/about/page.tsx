@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     title: "About ConnectX – Chat with Friends",
     description:
       "Chat with friends, share status updates, join groups, and make voice and video calls with ConnectX.",
-    url: "https://connectx-sandy.vercel.app/about",
+    url: "https://connectx-samarthtgg.vercel.app/about",
     siteName: "ConnectX",
   },
 };
