@@ -1,0 +1,59 @@
+name: ConnectX quality checks
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+    paths:
+      - "connectx-app/**"
+      - ".github/workflows/connectx-quality.yml"
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+    paths:
+      - "connectx-app/**"
+      - ".github/workflows/connectx-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: connectx-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-quality:
+    name: Lint, type-check and production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: connectx-app
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+      NEXT_PUBLIC_SITE_URL: https://connectx-samarthtgg.vercel.app
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: connectx-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check TypeScript
+        run: npx tsc --noEmit
+
+      - name: Build production app
+        run: npm run build
