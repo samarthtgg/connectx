@@ -21,7 +21,7 @@ ConnectX brings direct conversations, group chats, status updates, and calling i
 | Alternate deployment | [connectx-sandy.vercel.app](https://connectx-sandy.vercel.app) |
 | Alternate chat preview | [Open chat preview](https://connectx-sandy.vercel.app/chat-preview) |
 
-The primary deployment is the recommended starting point. The alternate deployment is listed separately; feature parity between deployments should be verified before relying on it.
+Both URLs are valid ConnectX deployments. Use the primary deployment as the main entry point; the alternate deployment remains available as a second entry point.
 
 ## What it includes
 
