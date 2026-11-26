@@ -1766,7 +1766,6 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
 
   const loadStatuses=useCallback(async()=>{
     if(!userId)return;
-    const visibleOwnerIds = [userId, ...Array.from(acceptedIds)];
     const {data,error}=await supabase.from("status_updates").select("id,user_id,caption,media_url,media_type,created_at,expires_at,audience")
     if(error)throw error; setStatuses((data??[]) as StatusUpdate[]);
   },[userId,acceptedIds]);
