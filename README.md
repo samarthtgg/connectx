@@ -9,17 +9,20 @@ ConnectX brings direct conversations, group chats, status updates, and calling i
   ·
   <a href="https://connectx-samarthtgg.vercel.app/chat-preview">Open chat preview</a>
   ·
+  <a href="open-lab/">Explore Open Lab</a>
+  ·
   <a href="https://github.com/samarthtgg/connectx/issues">Report a bug</a>
 </p>
 
 ## Try it
 
-| Deployment | Link |
+| Experience | Link |
 | --- | --- |
 | Primary deployment | [connectx-samarthtgg.vercel.app](https://connectx-samarthtgg.vercel.app) |
 | Primary chat preview | [Open chat preview](https://connectx-samarthtgg.vercel.app/chat-preview) |
 | Alternate deployment | [connectx-sandy.vercel.app](https://connectx-sandy.vercel.app) |
 | Alternate chat preview | [Open chat preview](https://connectx-sandy.vercel.app/chat-preview) |
+| **Interactive repository lab** | [ConnectX Open Lab](open-lab/) |
 
 The two production aliases were verified on the same READY Vercel deployment on 2026-11-26. Re-check the alias mapping after future production deployments.
 
@@ -41,6 +44,14 @@ The current project includes:
 
 Feature availability can depend on account state, browser/device permissions, and Supabase project configuration. The Android wrapper is a debug/test build, not a Play Store-ready release.
 
+## ConnectX Open Lab
+
+The Open Lab is a public, no-login playground for exploring messaging concepts safely. It includes a simulated direct conversation, a group chat sandbox, a message lifecycle explorer, a conceptual system map, and privacy/safety notes.
+
+**All people, messages, and events in the lab are fictional.** The playground runs locally in the browser and does not connect to production accounts, Supabase, or real user data. It is an educational simulation, not a production feature test.
+
+[Launch ConnectX Open Lab](open-lab/)
+
 ## Technology
 
 - [Next.js](https://nextjs.org/) 16
@@ -57,6 +68,8 @@ Feature availability can depend on account state, browser/device permissions, an
 │   └── workflows/
 │       ├── android-apk.yml
 │       └── contributors.yml
+├── open-lab/
+│   └── index.html             # Interactive, simulated repository playground
 ├── README.md
 └── connectx-app/
     ├── app/                 # Next.js routes and UI
