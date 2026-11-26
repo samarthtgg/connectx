@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 type AuthMode = "signup" | "login" | "forgot";
@@ -20,7 +21,7 @@ export default function Home() {
   const [mode, setMode] = useState<AuthMode>("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error" | "info">("info");
   const [loading, setLoading] = useState(false);
