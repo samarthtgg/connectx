@@ -5,16 +5,10 @@ on:
     branches:
       - main
       - "release/**"
-    paths:
-      - "connectx-app/**"
-      - ".github/workflows/connectx-quality.yml"
   pull_request:
     branches:
       - main
       - "release/**"
-    paths:
-      - "connectx-app/**"
-      - ".github/workflows/connectx-quality.yml"
   workflow_dispatch:
 
 permissions:
