@@ -21,7 +21,11 @@ ConnectX brings direct conversations, group chats, status updates, and calling i
 | Alternate deployment | [connectx-sandy.vercel.app](https://connectx-sandy.vercel.app) |
 | Alternate chat preview | [Open chat preview](https://connectx-sandy.vercel.app/chat-preview) |
 
-Both URLs are valid ConnectX deployments. Use the primary deployment as the main entry point; the alternate deployment remains available as a second entry point.
+Both URLs are listed as intended ConnectX entry points. The latest Vercel production deployment's aliases must be checked before assuming either custom domain points to that deployment.
+
+## Home Screen Preview
+
+![ConnectX home screen](docs/screenshots/home-screen.png)
 
 ## What it includes
 
@@ -61,7 +65,7 @@ Feature availability can depend on account state, browser/device permissions, an
     ├── supabase/
     │   ├── functions/       # Supabase Edge Functions
     │   └── migrations/      # Database migrations
-    ├── android-wrapper/     # Android WebView wrapper
+    ├── android-wrapper/     # Intended Android WebView wrapper location
     ├── package.json
     └── README.md
 ```
@@ -124,7 +128,7 @@ Do not treat the Android debug APK as a production release. Physical-device test
 
 ## Android test build
 
-The workflow at `.github/workflows/android-apk.yml` can build a debug APK when manually dispatched or when Android wrapper files change. The generated APK is uploaded as a GitHub Actions artifact.
+The workflow at `.github/workflows/android-apk.yml` is configured to build a debug APK from `connectx-app/android-wrapper` when manually dispatched or when Android wrapper files change. The expected wrapper directory and Gradle project are not currently present in the checked-in Git tree, so this workflow cannot yet produce a verified artifact from the current repository.
 
 This workflow does not create a signed release APK or publish an app to Google Play. Test authentication, media upload, permissions, notifications, deep links, and calling on physical Android devices before treating the wrapper as release-ready.
 

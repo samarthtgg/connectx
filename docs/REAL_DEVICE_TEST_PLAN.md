@@ -45,14 +45,14 @@ The owner reports the device-test areas below as passed. Browser/WebView version
 - [x] Test app pause/resume, process restart, and back button behavior (owner-reported).
 - [x] Confirm the wrapper handles unavailable network and expired sessions clearly (owner-reported).
 
-**Repository verification note (2026-11-26):** The current Git tree contains no Android wrapper source directory or Gradle project, although `.github/workflows/android-apk.yml` references `connectx-app/android-wrapper`. The workflow only assembles a debug APK. Consequently, the Android release build/signing configuration cannot be verified from the checked-in source, and the existing workflow is not evidence of a signed production APK.
+**Repository verification note (2026-11-26):** The recursive Git tree does not contain `connectx-app/android-wrapper` or any Android Gradle project files, although `.github/workflows/android-apk.yml` points to that directory and runs `gradle assembleDebug`. The workflow only describes a debug APK. No production release build configuration, signing configuration, or signed release artifact can be verified from the current repository.
 
 ## CI and deployment verification
 
-- [x] GitHub Actions quality workflow passed on 2026-11-26 for commit `34c201544aad83d2eccb2825bbac827e3081c987` (run #31, job "Lint, type-check and production build", conclusion: success).
-- [x] Vercel reported a READY production deployment for the same commit on 2026-11-26.
-- [ ] Verify the primary and alternate Vercel domains resolve to the intended latest production deployment. Vercel project metadata lists both domains, but the latest deployment's alias listing only returned the Git-main alias; the primary domain lookup did not resolve.
-- [ ] Independently load and smoke-test both public deployment URLs from a normal browser/device.
+- [x] GitHub Actions quality workflow passed on 2026-11-26 for commit `ce64e50680bd228f6a1b2157494603761660ac50` (run [#32](https://github.com/samarthtgg/connectx/actions/runs/45769815082), job "Lint, type-check and production build", conclusion: success). The dependency install, ESLint, TypeScript check, and production build steps all completed successfully.
+- [x] Vercel reported a READY production deployment for the same commit: [deployment details](https://vercel.com/samarthtgg/connectx/8a8fjbgosh2HGkRr4sLCDaQy4uaX).
+- [ ] The latest deployment alias list contains only `connectx-git-main-samarthtgg.vercel.app`. Vercel lists `connectx-sandy.vercel.app` as a verified project domain, but it is not attached as an alias to that latest deployment. The `connectx-samarthtgg.vercel.app` project-domain lookup returned not found and it is not in the current project-domain list.
+- [ ] Independently load and smoke-test both public deployment URLs from a normal browser/device. Automated page fetches in this review could not retrieve either URL, so their page content and end-user behavior are not confirmed.
 
 ## Privacy and support review
 
@@ -64,9 +64,10 @@ The owner reports the device-test areas below as passed. Browser/WebView version
 - [ ] Record the browser/WebView version and exact test date alongside the device and Android version.
 - [ ] Attach sanitized screenshots or short recordings; do not include real chat content, credentials, tokens, or private user data.
 - [ ] Review and resolve release-blocking defects; retain retest evidence.
-- [ ] Add and verify an Android production release build configuration with signing kept out of source control. Confirm the signing setup on a protected release workflow before distributing a signed APK.
+- [ ] Restore/add the Android wrapper project and its Gradle configuration. Then verify a production release build and signing workflow. Keep the signing key outside source control; use local signing or protected GitHub Actions secrets without paid services or a payment card.
 - [ ] Complete privacy-policy and user-support review before publishing.
+- [x] Add the supplied actual ConnectX home-screen screenshot at `docs/screenshots/home-screen.png` and reference only that screenshot in the README preview section.
 
 ## Current release status
 
-The owner reports the real-device test coverage as complete, but those results have not been independently reproduced and the supporting evidence/version details remain outstanding. The GitHub Actions quality check and a Vercel production deployment were independently verified for the commit above. Android release signing, privacy/support readiness, and both custom-domain mappings are not yet verified. Do not call ConnectX fully release-ready, close the release issue, or publish a signed release until all remaining release gates are completed.
+The owner reports the real-device test coverage as complete, but those results have not been independently reproduced and the supporting evidence/version details remain outstanding. The GitHub Actions quality check and a Vercel production deployment were independently verified for commit `ce64e50680bd228f6a1b2157494603761660ac50`. The supplied home-screen screenshot is now included in the repository documentation. Android release signing, privacy/support readiness, custom-domain mappings, and public URL smoke tests are not yet verified. Do not call ConnectX fully release-ready, close issue #2, or publish a signed release until all remaining release gates are completed.
