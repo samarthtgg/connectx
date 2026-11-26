@@ -146,4 +146,4 @@ ConnectX is actively developed. Some features may be experimental or depend on e
 
 ## License
 
-This repository currently has no open-source license. Until the owner chooses and adds one, GitHub's default copyright rules apply; do not assume permission to reuse, redistribute, or modify the code.
+ConnectX is released under the [MIT License](LICENSE). You may use, copy, modify, distribute, sublicense, and sell copies of the software, subject to the license notice and disclaimer.
