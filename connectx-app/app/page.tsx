@@ -272,6 +272,11 @@ export default function Home() {
         )}
       </section>
 
+      <footer className="absolute bottom-3 left-0 right-0 text-center text-xs text-slate-500">
+        <a href="/privacy" className="text-indigo-300 hover:text-indigo-200">Privacy Policy</a>
+        <span className="px-2">·</span>
+        <a href="mailto:kumbharsamarth1724@gmail.com" className="text-indigo-300 hover:text-indigo-200">Support</a>
+      </footer>
     </main>
   );
 }
