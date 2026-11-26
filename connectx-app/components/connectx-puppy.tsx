@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type Mood = "idle" | "jump" | "left" | "right" | "sleep" | "think" | "wave" | "dance" | "happy" | "sad" | "angry" | "cry" | "play";
+type SpeechRecognitionResultLike = ArrayLike<{ transcript: string }>;
+type SpeechRecognitionEventLike = { results: ArrayLike<SpeechRecognitionResultLike> };
+type SpeechRecognitionLike = { lang: string; interimResults: boolean; maxAlternatives: number; onstart: (() => void) | null; onresult: ((event: SpeechRecognitionEventLike) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
+type SpeechRecognitionWindow = Window & { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
 const colors = ["#9ca3af","#f3a6c8","#f59e0b","#facc15","#84cc16","#22c55e","#14b8a6","#06b6d4","#38bdf8","#60a5fa","#818cf8","#a78bfa","#c084fc","#e879f9","#fb7185","#f87171","#fb923c","#d6b38a","#64748b","#f8fafc"];
 
 export default function ConnectXPuppy() {
@@ -36,12 +40,12 @@ export default function ConnectXPuppy() {
   const lastPointAt = useRef(0);
   const userId = useRef<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
-  const recognition = useRef<any>(null);
+  const recognition = useRef<SpeechRecognitionLike | null>(null);
   const lastTap = useRef(0);
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moodTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shrinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startBallFetchRef = useRef<() => void>(() => {});
+
 
   const showBubble = useCallback((message: string, duration = 2000) => {
     setBubble(message);
@@ -161,6 +165,18 @@ export default function ConnectXPuppy() {
   const nextLevelAt = interactionCount >= 150 ? 150 : interactionCount >= 60 ? 150 : interactionCount >= 20 ? 60 : 20;
   const levelProgress = interactionCount >= 150 ? 100 : Math.min(100, ((interactionCount - levelStart) / (nextLevelAt - levelStart)) * 100);
 
+  const startBallFetch = useCallback(() => {
+    if (injuredUntil > Date.now() || ballFlight) return;
+    const startX = Math.max(18, Math.min(window.innerWidth - 46, position.x + 48));
+    const startY = Math.max(18, Math.min(window.innerHeight - 46, position.y + 74));
+    setKickSide(side => side === "left" ? "right" : "left");
+    setBallPlaying(true);
+    const direction = Math.floor(Math.random() * 10);
+    const angle = (direction / 10) * Math.PI * 2;
+    const speed = 8 + Math.random() * 4.5;
+    setBallFlight({ x: startX, y: startY, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, bounces: 0, returning: false });
+  }, [injuredUntil, ballFlight, position.x, position.y]);
+
   const handleCommand = useCallback((spoken: string) => {
     if (injuredUntil > Date.now()) return;
     const command = spoken.toLowerCase().trim();
@@ -169,7 +185,7 @@ export default function ConnectXPuppy() {
     else if (/\b(sad|unhappy)\b/.test(command)) say("Aww... I'm feeling sad. 😢", "sad");
     else if (/\b(angry|mad)\b/.test(command)) say("Grrr! I'm a little angry! 😠", "angry");
     else if (/\b(cry|crying)\b/.test(command)) say("Boohoo... 😭", "cry");
-    else if (/(play with (the )?ball|play ball|fetch)/.test(command)) { startBallFetchRef.current(); say("Yippee! Let\u0027s play fetch! 🎾", "play"); }
+    else if (/(play with (the )?ball|play ball|fetch)/.test(command)) { startBallFetch(); say("Yippee! Let\u0027s play fetch! 🎾", "play"); }
     else if (/(jump|hop)/.test(command)) say("Wheee! 🐾", "jump");
     else if (/(go |move |walk )?left|turn left/.test(command)) { setPosition(p => ({ ...p, x: Math.max(8, p.x - 105) })); say("Walking left!", "left"); }
     else if (/(go |move |walk )?right|turn right/.test(command)) { setPosition(p => ({ ...p, x: Math.min(window.innerWidth - 112, p.x + 105) })); say("Walking right!", "right"); }
@@ -186,10 +202,11 @@ export default function ConnectXPuppy() {
     else if (/(spin|turn around)/.test(command)) say("Wheee, round and round!", "dance");
     else if (/(hide)/.test(command)) { setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); }
     else say("Hmm? 🐾", "think");
-  }, [say, interactionCount, username, interact, injuredUntil]);
+  }, [say, interactionCount, username, interact, injuredUntil, startBallFetch]);
 
   const startListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognition) { say("Woof! 🐾", "think"); return; }
     const instance = new SpeechRecognition();
     recognition.current = instance;
@@ -197,25 +214,11 @@ export default function ConnectXPuppy() {
     instance.interimResults = false;
     instance.maxAlternatives = 1;
     instance.onstart = () => { setListening(true); say(`I am listening, ${username}! 🐾`, "wave"); };
-    instance.onresult = (event: any) => handleCommand(event.results[0][0].transcript);
+    instance.onresult = (event) => handleCommand(event.results[0][0].transcript);
     instance.onerror = () => say("Woof? 🐾", "think");
     instance.onend = () => setListening(false);
     try { instance.start(); } catch { setListening(false); }
   };
-
-  const startBallFetch = () => {
-    if (injuredUntil > Date.now() || ballFlight) return;
-    const startX = Math.max(18, Math.min(window.innerWidth - 46, position.x + 48));
-    const startY = Math.max(18, Math.min(window.innerHeight - 46, position.y + 74));
-    setKickSide(side => side === "left" ? "right" : "left");
-    setBallPlaying(true);
-    // Pick one of ten evenly spaced launch directions for every fetch.
-    const direction = Math.floor(Math.random() * 10);
-    const angle = (direction / 10) * Math.PI * 2;
-    const speed = 8 + Math.random() * 4.5;
-    setBallFlight({ x: startX, y: startY, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, bounces: 0, returning: false });
-  };
-  startBallFetchRef.current = startBallFetch;
 
   useEffect(() => {
     if (!ballFlight) return;
@@ -264,13 +267,6 @@ export default function ConnectXPuppy() {
       showBubble('I am hurt... I need 10 minutes to recover. 🩹', 3800);
       window.setTimeout(() => { setInjuryPreview(false); setVisible(false); localStorage.setItem('cx-puppy-hidden-v1', 'true'); }, 4000);
     }
-  };
-
-  const begin = () => {
-    if (injuredUntil > Date.now()) return;
-    setVisible(true);
-    localStorage.setItem("cx-puppy-hidden-v1", "false");
-    setMood("wave");
   };
 
   const moveTo = (clientX: number, clientY: number) => {
