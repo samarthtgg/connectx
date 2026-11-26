@@ -116,6 +116,12 @@ npm run lint
 npm run build
 ```
 
+## Testing and release readiness
+
+The repository's CI checks validate code quality and production compilation. They do not prove that every feature works on physical devices. Follow the [real-device test plan](docs/REAL_DEVICE_TEST_PLAN.md) and track outstanding verification in [issue #2](https://github.com/samarthtgg/connectx/issues/2).
+
+Do not treat the Android debug APK as a production release. Physical-device testing, release signing, privacy/support details, and release configuration still need review.
+
 ## Android test build
 
 The workflow at `.github/workflows/android-apk.yml` can build a debug APK when manually dispatched or when Android wrapper files change. The generated APK is uploaded as a GitHub Actions artifact.
@@ -140,4 +146,4 @@ ConnectX is actively developed. Some features may be experimental or depend on e
 
 ## License
 
-No open-source license is currently included in this repository. Unless a license is added, the default copyright rules apply; do not assume you have permission to redistribute or modify this project.
+This repository currently has no open-source license. Until the owner chooses and adds one, GitHub's default copyright rules apply; do not assume permission to reuse, redistribute, or modify the code.
