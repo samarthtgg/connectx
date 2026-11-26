@@ -55,7 +55,8 @@ Feature availability can depend on account state, browser/device permissions, an
 .
 ├── .github/
 │   └── workflows/
-│       └── android-apk.yml
+│       ├── android-apk.yml
+│       └── contributors.yml
 ├── README.md
 └── connectx-app/
     ├── app/                 # Next.js routes and UI
@@ -141,6 +142,13 @@ This workflow does not publish an app to Google Play. Test the built APK on phys
 - Validate authorization on the server/database; hiding a UI control is not access control.
 - Do not commit real user data, credentials, tokens, or production exports.
 - Please report suspected vulnerabilities privately. See [SECURITY.md](SECURITY.md).
+
+## Contributors
+
+ConnectX is built in public. This wall is refreshed automatically from GitHub contributor data after updates to the default branch and once each week. Every card links to its contributor's GitHub profile. If the wall is empty, be the first to appear here.
+
+<!-- readme: contributors,bots/- -start -->
+<!-- readme: contributors,bots/- -end -->
 
 ## Contributing
 
