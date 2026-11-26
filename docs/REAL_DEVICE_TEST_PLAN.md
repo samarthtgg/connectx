@@ -26,7 +26,8 @@ The owner has also confirmed that the newly built Android debug APK works on the
 
 - [x] Send and receive direct messages in both directions (owner-confirmed).
 - [x] Test group creation, membership, roles, and message permissions (owner-reported).
-- [x] Test image and video upload, preview, download, and expiry cleanup (owner-reported).
+- [x] Test image and video upload, preview, and download (owner-reported).
+- [ ] Independently verify that expired temporary-media objects are actually deleted from Supabase Storage; database-row expiry or a client-side expiry test alone is not sufficient.
 - [x] Test reply, forward, delete, archive, pin, and disappearing-message behavior (owner-reported).
 - [x] Test offline send/retry and duplicate prevention (owner-reported).
 
@@ -76,7 +77,8 @@ To complete this record, capture Chrome's version from Settings > About Chrome a
 
 ## Privacy and support review
 
-- [ ] Publish and review an accurate privacy policy based on actual data collection, use, sharing, retention, security, and account-deletion behavior. Policy details must come from the project owner rather than being guessed.
+- [x] Publish a privacy policy and link it from the app (deployed at `/privacy` on both production aliases).
+- [ ] Review the published policy against actual data collection, sharing, storage visibility, retention, security, and account-deletion behavior; correct any mismatch.
 - [ ] Provide a user-facing support contact or support page. `SECURITY.md` is for vulnerability reporting, not general customer support.
 
 ## Evidence and release gate
@@ -89,4 +91,4 @@ To complete this record, capture Chrome's version from Settings > About Chrome a
 
 ## Current release status
 
-The Android debug build passes and the project owner confirms that the newly built APK works. Both production URLs have been verified on the same deployment, and the owner confirms login and message send/receive on both. The project is not yet a production-signed Android release: exact device/browser evidence, privacy-policy and support details, and a protected release-signing process remain outstanding. Keep issue #2 open until its release gates are genuinely complete.
+The Android debug build passes and the project owner confirms that the newly built APK works. Both production URLs have been verified on the same deployment, and the owner confirms login and message send/receive on both. The project is not yet a production-signed Android release: independent temporary-media object-deletion verification, exact device/browser evidence, privacy-policy accuracy review, general user-support details, and a protected release-signing process remain outstanding. Keep issue #2 open until its release gates are genuinely complete.
