@@ -346,6 +346,12 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
+  const [clockNow, setClockNow] = useState(0);
+  useEffect(() => {
+    const initial = window.setTimeout(() => setClockNow(Date.now()), 0);
+    const interval = window.setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => { window.clearTimeout(initial); window.clearInterval(interval); };
+  }, []);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledDirectMessage[]>([]);
   const [scheduledBusy, setScheduledBusy] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ url: string; name: string } | null>(null);
@@ -1768,7 +1774,6 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
 
   const refreshApp = useCallback(async () => {
     if (!userId || refreshing) return;
-    const startedAt = Date.now();
     setRefreshing(true);
     setError("");
     setNotice("");
@@ -1793,8 +1798,6 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not refresh ConnectX. Please try again.");
     } finally {
-      const remaining = 650 - (Date.now() - startedAt);
-      if (remaining > 0) await new Promise((resolve) => window.setTimeout(resolve, remaining));
       setRefreshing(false);
     }
   }, [userId, refreshing, loadBase, loadChatPreferences, loadGroups, loadStatuses, loadRecentChats, selectedFriend, loadMessages, selectedGroup, loadGroupProfile, loadGroupFeed]);
@@ -2936,7 +2939,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             {typing && <div className="typing-indicator"><span></span><span></span><span></span> {activeName} is typing</div>}
             {filteredChatMessages.map((message) => {
               const mine = message.sender_id === userId;
-              const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || new Date(message.media_expires_at).getTime() <= Date.now());
+              const mediaIsExpired = !!message.media_path && (message.media_expired === true || !message.media_expires_at || clockNow > 0 && new Date(message.media_expires_at).getTime() <= clockNow);
               return <div key={message.id} className={(mine ? "message-line mine" : "message-line") + (selectedMessageIds.includes(message.id) ? " message-selected" : "") + (message.id.startsWith("optimistic-") ? " message-sending" : "")} onClick={() => { if (messageSelectionMode) toggleMessageSelection(message.id); else if(messageLongPressTriggeredRef.current){messageLongPressTriggeredRef.current=false;} else if(messageActionMenu?.id!==message.id)setMessageActionMenu(null); }} onContextMenu={(e)=>{e.preventDefault();openMessageActions(message.id,"direct");}} onTouchStart={(e) => { if (!messageSelectionMode) startReplySwipe(e, message, "direct"); }} onTouchMove={cancelMessageLongPress} onTouchEnd={(e) => { cancelMessageLongPress(); if (!messageSelectionMode && !messageLongPressTriggeredRef.current) finishReplySwipe(e, message, "direct"); }}>
                 <div className={mine ? "bubble mine-bubble" : "bubble"} style={{background:mine?activeChatTheme.mine:activeChatTheme.theirs,color:chatTheme===6?"#f4f2ff":"#25233a"}}>{message.reply_to_content && <div className="reply-quote"><strong>{message.reply_to_content.startsWith("STATUS_REPLY|") ? "Replied to your status" : message.reply_to_content.startsWith("STATUS_REACTION|") ? "Reacted to your status" : message.reply_to_sender_id === userId ? "You" : "Replied message"}</strong><span>{message.reply_to_content.replace(/^STATUS_(?:REPLY|REACTION)\|/, "")}</span></div>}{message.message_type === "voice" ? <VoiceMessagePlayer src={message.content} mine={mine} /> : message.message_type === "image" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This photo has expired.</p> : <img className="chat-media" src={message.media_url} alt="Shared photo" />) : message.message_type === "video" ? (mediaIsExpired || !message.media_url ? <p className="expired-media">This video has expired.</p> : <video className="chat-media" src={message.media_url} controls playsInline preload="metadata" />) : (editingMessageId === message.id && mine ? null : <p>{message.content}</p>)}
                   {editingMessageId === message.id && mine && message.message_type === "text" && <div className="message-edit-inline"><textarea rows={3} maxLength={5000} value={editMessageDraft} onChange={(event) => setEditMessageDraft(event.target.value)} aria-label="Edit message" /><div><button type="button" disabled={!editMessageDraft.trim() || editMessageBusy} onClick={() => void saveEditedMessage(message)}>{editMessageBusy ? "Saving…" : "Save"}</button><button type="button" onClick={() => { setEditingMessageId(null); setEditMessageDraft(""); }}>Cancel</button></div></div>}
@@ -3142,7 +3145,7 @@ const tr = (key: string) => APP_NAV_COPY[appLanguage]?.[key] || APP_COPY[appLang
             <small>NEW SCHEDULE</small><p>Write now, choose a date and time, and send automatically.</p>
             <textarea rows={4} maxLength={5000} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Write your message…" required />
             <label style={{display:"block",marginTop:12}}>Send date and time
-              <input style={{display:"block",width:"100%",marginTop:6}} type="datetime-local" required min={new Date(Date.now()-new Date().getTimezoneOffset()*60000+60000).toISOString().slice(0,16)} value={scheduleAt} onChange={event=>setScheduleAt(event.target.value)} />
+              <input style={{display:"block",width:"100%",marginTop:6}} type="datetime-local" required min={clockNow ? new Date(clockNow-new Date(clockNow).getTimezoneOffset()*60000+60000).toISOString().slice(0,16) : undefined} value={scheduleAt} onChange={event=>setScheduleAt(event.target.value)} />
             </label>
             <button type="submit" disabled={scheduledBusy || !draft.trim() || !scheduleAt}>{scheduledBusy ? "Scheduling…" : "Schedule message"}</button>
           </form>
