@@ -15,9 +15,9 @@ All notable, verified repository changes are recorded here.
 
 ### Verified checks (2026-11-26)
 - GitHub Actions quality run [#35](https://github.com/samarthtgg/connectx/actions/runs/45772221084) passed for commit `66034f9bae176fa7a3cb74a5465ad2f43a7c6eaa`.
-- Vercel reported a READY production deployment for that commit: [deployment details](https://vercel.com/samarthtgg/connectx/2R2WbkttUCzMXBcdWT2Y6oEYH1Zt).
+- Vercel reports a READY production deployment for latest reviewed commit `2ac10505ad671a6569e42a45830ac24e7c688df7`: [deployment details](https://vercel.com/samarthtgg/connectx/S5ZxNffqncpCivN4g6xqTEJEAjCT).
 - Vercel's deployment alias read-back confirms both `connectx-samarthtgg.vercel.app` and `connectx-sandy.vercel.app` are assigned to that READY deployment.
-- Both requested hostnames resolve through Vercel's deployment lookup to the same READY deployment. A normal interactive browser/device smoke test is still outstanding.
+- Vercel deployment lookup for both requested hostnames resolves to the same READY deployment. An interactive browser/device smoke test is still outstanding.
 - The Android workflow references `connectx-app/android-wrapper`, but that directory and Android Gradle project files are absent from the current Git tree. The workflow is configured for a debug APK only; no production signing configuration or signed release artifact was verified.
 - No privacy-policy file or route was found in the repository tree. `SECURITY.md` provides vulnerability-reporting guidance, not a general user-support channel; no user-facing support contact/page was identified.
 - Owner-reported real-device tests are recorded as owner-reported, not independently verified; browser/WebView version details and sanitized evidence remain outstanding.
