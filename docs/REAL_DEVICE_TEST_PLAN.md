@@ -6,7 +6,7 @@ This checklist tracks the checks needed before calling ConnectX or its Android W
 
 On 2026-11-26, the project owner confirmed that the real-device checks were completed successfully. Earlier reports identify an iQOO Z10x running Android 16, plus a two-device test for offline messaging and voice/video calling. These are owner-reported results, not independently reproduced test results.
 
-The owner reports the device-test areas below as passed. Browser/WebView version details, exact test date details, and sanitized supporting evidence have not been supplied.
+The owner reports the device-test areas below as passed. Browser/WebView version details and sanitized supporting evidence have not been supplied.
 
 ## Android and browser basics
 
@@ -49,10 +49,10 @@ The owner reports the device-test areas below as passed. Browser/WebView version
 
 ## CI and deployment verification
 
-- [x] GitHub Actions quality workflow passed on 2026-11-26 for commit `37dc529f1d40806878f44f6ce782c23c18861633` (run [#33](https://github.com/samarthtgg/connectx/actions/runs/45770620503), job "Lint, type-check and production build", conclusion: success). Dependency installation, ESLint, TypeScript checking, and the production build all completed successfully.
-- [x] Vercel reported a READY production deployment for commit `37dc529f1d40806878f44f6ce782c23c18861633`: [deployment details](https://vercel.com/samarthtgg/connectx/Be1P6naQpykdGqaYo83kDh9i9Qv7).
-- [ ] Both requested custom domains are confirmed on the latest deployment. Vercel accepted alias-assignment requests for `connectx-samarthtgg.vercel.app` and `connectx-sandy.vercel.app`, but a subsequent deployment read-back still listed only `connectx-git-main-samarthtgg.vercel.app`; the custom aliases are therefore not treated as verified.
-- [ ] Independently load and smoke-test both public deployment URLs from a normal browser/device. Automated page fetches could not retrieve either URL in this review.
+- [x] GitHub Actions quality workflow passed for latest reviewed commit `66034f9bae176fa7a3cb74a5465ad2f43a7c6eaa` (run [#35](https://github.com/samarthtgg/connectx/actions/runs/45772221084), conclusion: success).
+- [x] Vercel reported a READY production deployment for commit `66034f9bae176fa7a3cb74a5465ad2f43a7c6eaa`: [deployment details](https://vercel.com/samarthtgg/connectx/2R2WbkttUCzMXBcdWT2Y6oEYH1Zt).
+- [x] Vercel deployment alias list confirms both `connectx-samarthtgg.vercel.app` and `connectx-sandy.vercel.app` are assigned to that deployment (read-back checked 2026-11-26).
+- [ ] Independently load and smoke-test both public URLs in a normal browser/device. Tool-based page fetches could not retrieve either URL during this review; the Vercel hostname lookup resolves both to the same READY deployment.
 
 ## Privacy and support review
 
@@ -70,4 +70,4 @@ The owner reports the device-test areas below as passed. Browser/WebView version
 
 ## Current release status
 
-The owner reports the real-device test coverage as complete, but those results have not been independently reproduced and the supporting evidence/version details remain outstanding. GitHub Actions quality checks and a Vercel production deployment are independently verified for commit `37dc529`. Alias-assignment requests were accepted, but Vercel read-back did not show either requested custom domain on the latest deployment, so domain sync is still unresolved. Android release signing, privacy/support readiness, public URL smoke tests, and test evidence remain release gates. Do not call ConnectX fully release-ready, close issue #2, or publish a signed release until all remaining release gates are completed.
+The owner reports the real-device test coverage as complete, but those results have not been independently reproduced and browser/WebView version details plus sanitized evidence remain outstanding. GitHub Actions quality checks passed and Vercel reports a READY production deployment for commit `66034f9`. Vercel's deployment alias read-back confirms both requested URLs are assigned to that deployment. Android release signing, privacy/support readiness, public browser/device smoke tests, and test evidence remain release gates. Do not call ConnectX fully release-ready, close issue #2, or publish a signed release until all remaining release gates are completed.
