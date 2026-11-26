@@ -21,7 +21,7 @@ ConnectX brings direct conversations, group chats, status updates, and calling i
 | Alternate deployment | [connectx-sandy.vercel.app](https://connectx-sandy.vercel.app) |
 | Alternate chat preview | [Open chat preview](https://connectx-sandy.vercel.app/chat-preview) |
 
-Both URLs are listed as intended ConnectX entry points. The latest Vercel production deployment's aliases must be checked before assuming either custom domain points to that deployment.
+The two production aliases were verified on the same READY Vercel deployment on 2026-11-26. Re-check the alias mapping after future production deployments.
 
 ## Home Screen Preview
 
@@ -37,9 +37,9 @@ The current project includes:
 - Voice and video calling experiences.
 - A responsive interface designed with mobile use in mind.
 - A Next.js application and Supabase integration.
-- An Android WebView test-wrapper workflow that can build a debug APK artifact through GitHub Actions.
+- An Android WebView test wrapper with a GitHub Actions debug-APK build.
 
-Feature availability can depend on account state, browser/device permissions, and Supabase project configuration. The Android wrapper is a test build, not a Play Store-ready release.
+Feature availability can depend on account state, browser/device permissions, and Supabase project configuration. The Android wrapper is a debug/test build, not a Play Store-ready release.
 
 ## Technology
 
@@ -65,7 +65,7 @@ Feature availability can depend on account state, browser/device permissions, an
     ├── supabase/
     │   ├── functions/       # Supabase Edge Functions
     │   └── migrations/      # Database migrations
-    ├── android-wrapper/     # Intended Android WebView wrapper location
+    ├── android-wrapper/     # Android WebView test wrapper
     ├── package.json
     └── README.md
 ```
@@ -124,13 +124,15 @@ npm run build
 
 The repository's CI checks validate code quality and production compilation. They do not prove that every feature works on physical devices. Follow the [real-device test plan](docs/REAL_DEVICE_TEST_PLAN.md) and track outstanding verification in [issue #2](https://github.com/samarthtgg/connectx/issues/2).
 
-Do not treat the Android debug APK as a production release. Physical-device testing, release signing, privacy/support details, and release configuration still need review.
+The Android debug APK workflow completed successfully on 2026-11-26 (run [#5](https://github.com/samarthtgg/connectx/actions/runs/45776960135)). The project owner subsequently confirmed that the newly built APK works on their device. This is a debug/test APK, not a production-signed release.
 
 ## Android test build
 
-The workflow at `.github/workflows/android-apk.yml` is configured to build a debug APK from `connectx-app/android-wrapper` when manually dispatched or when Android wrapper files change. The expected wrapper directory and Gradle project are not currently present in the checked-in Git tree, so this workflow cannot yet produce a verified artifact from the current repository.
+The workflow at `.github/workflows/android-apk.yml` builds a debug APK from `connectx-app/android-wrapper` when manually dispatched or when Android wrapper files change. The latest successful run produced the `ConnectX-debug-apk` artifact. GitHub Actions artifacts expire; check the workflow run for the current download.
 
-This workflow does not create a signed release APK or publish an app to Google Play. Test authentication, media upload, permissions, notifications, deep links, and calling on physical Android devices before treating the wrapper as release-ready.
+The wrapper is a minimal WebView shell. It supports ConnectX host navigation, file selection, and on-demand camera/microphone permission handling. It does not currently implement production release signing, push-notification integration, custom deep-link routing, or offline storage.
+
+This workflow does not publish an app to Google Play. Test the built APK on physical Android devices and complete the release checklist before treating the wrapper as release-ready.
 
 ## Security and privacy
 
