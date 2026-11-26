@@ -160,10 +160,6 @@ export default function ConnectXPuppy() {
     }
   }, [pathname, visible]);
 
-  const level = interactionCount >= 150 ? "Best Friend" : interactionCount >= 60 ? "Friendly" : interactionCount >= 20 ? "Junior" : "Baby";
-  const levelStart = interactionCount >= 150 ? 150 : interactionCount >= 60 ? 60 : interactionCount >= 20 ? 20 : 0;
-  const nextLevelAt = interactionCount >= 150 ? 150 : interactionCount >= 60 ? 150 : interactionCount >= 20 ? 60 : 20;
-  const levelProgress = interactionCount >= 150 ? 100 : Math.min(100, ((interactionCount - levelStart) / (nextLevelAt - levelStart)) * 100);
 
   const startBallFetch = useCallback(() => {
     if (injuredUntil > Date.now() || ballFlight) return;
@@ -373,7 +369,7 @@ export default function ConnectXPuppy() {
           </div>
           {puppyMenuOpen && (
             <div className="absolute left-1/2 top-full z-[120] mt-2 flex -translate-x-1/2 gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-2 shadow-2xl">
-              <button type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setPuppyMenuOpen(false); startListening(); }} className="whitespace-nowrap rounded-xl bg-cyan-500/20 px-3 py-2 text-xs font-semibold text-cyan-100">🎙️ Speak</button>
+              <button type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setPuppyMenuOpen(false); startListening(); }} className="whitespace-nowrap rounded-xl bg-cyan-500/20 px-3 py-2 text-xs font-semibold text-cyan-100">{listening ? "Listening…" : "🎙️ Speak"}</button>
               <button type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setPuppyMenuOpen(false); setVisible(false); localStorage.setItem("cx-puppy-hidden-v1", "true"); }} className="whitespace-nowrap rounded-xl bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-100">Hide</button>
             </div>
           )}
