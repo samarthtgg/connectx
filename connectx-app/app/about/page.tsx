@@ -57,6 +57,12 @@ export default function AboutConnectXPage() {
           </div>
         </section>
 
+        <div className="mt-10 border-t border-white/10 pt-6 text-sm text-slate-400">
+          <Link href="/privacy" className="text-violet-300 hover:text-violet-200">Privacy Policy</Link>
+          <span className="px-2">·</span>
+          <a href="mailto:kumbharsamarth1724@gmail.com" className="text-violet-300 hover:text-violet-200">Support: kumbharsamarth1724@gmail.com</a>
+        </div>
+
         <div className="mt-12">
           <Link
             href="/"
