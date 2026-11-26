@@ -49,10 +49,10 @@ The owner reports the device-test areas below as passed. Browser/WebView version
 
 ## CI and deployment verification
 
-- [x] GitHub Actions quality workflow passed for latest reviewed commit `66034f9bae176fa7a3cb74a5465ad2f43a7c6eaa` (run [#35](https://github.com/samarthtgg/connectx/actions/runs/45772221084), conclusion: success).
-- [x] Vercel reported a READY production deployment for commit `66034f9bae176fa7a3cb74a5465ad2f43a7c6eaa`: [deployment details](https://vercel.com/samarthtgg/connectx/2R2WbkttUCzMXBcdWT2Y6oEYH1Zt).
-- [x] Vercel deployment alias list confirms both `connectx-samarthtgg.vercel.app` and `connectx-sandy.vercel.app` are assigned to that deployment (read-back checked 2026-11-26).
-- [ ] Independently load and smoke-test both public URLs in a normal browser/device. Tool-based page fetches could not retrieve either URL during this review; the Vercel hostname lookup resolves both to the same READY deployment.
+- [x] GitHub Actions quality workflow passed for commit `66034f9bae176fa7a3cb74a5465ad2f43a7c6eaa` (run [#35](https://github.com/samarthtgg/connectx/actions/runs/45772221084), conclusion: success).
+- [x] Vercel reports a READY production deployment for latest reviewed commit `2ac10505ad671a6569e42a45830ac24e7c688df7`: deployment `dpl_S5ZxNffqncpCivN4g6xqTEJEAjCT` ([deployment details](https://vercel.com/samarthtgg/connectx/S5ZxNffqncpCivN4g6xqTEJEAjCT)).
+- [x] Vercel deployment alias list confirms both `connectx-samarthtgg.vercel.app` and `connectx-sandy.vercel.app` are assigned to that READY deployment (read-back checked 2026-11-26).
+- [ ] Independently load and smoke-test both public URLs in a normal browser/device. Vercel deployment lookup resolves both hostnames to the same READY deployment, but an interactive browser/device smoke test remains outstanding.
 
 ## Privacy and support review
 
@@ -70,4 +70,4 @@ The owner reports the device-test areas below as passed. Browser/WebView version
 
 ## Current release status
 
-The owner reports the real-device test coverage as complete, but those results have not been independently reproduced and browser/WebView version details plus sanitized evidence remain outstanding. GitHub Actions quality checks passed and Vercel reports a READY production deployment for commit `66034f9`. Vercel's deployment alias read-back confirms both requested URLs are assigned to that deployment. Android release signing, privacy/support readiness, public browser/device smoke tests, and test evidence remain release gates. Do not call ConnectX fully release-ready, close issue #2, or publish a signed release until all remaining release gates are completed.
+The owner reports the real-device test coverage as complete, but those results have not been independently reproduced and browser/WebView version details plus sanitized evidence remain outstanding. GitHub Actions quality checks passed for commit `66034f9`. Vercel reports a READY production deployment for commit `2ac1050`, and its deployment alias read-back confirms both requested URLs are assigned to that deployment. Android release signing, privacy/support readiness, public browser/device smoke tests, and test evidence remain release gates. Do not call ConnectX fully release-ready, close issue #2, or publish a signed release until all remaining release gates are completed.
