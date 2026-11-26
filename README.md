@@ -148,6 +148,9 @@ This workflow does not publish an app to Google Play. Test the built APK on phys
 ConnectX is built in public. This wall is refreshed automatically from GitHub contributor data after updates to the default branch and once each week. Every card links to its contributor's GitHub profile. If the wall is empty, be the first to appear here.
 
 <!-- readme: contributors,bots/- -start -->
+<p align="center">
+  <a href="https://github.com/samarthtgg" title="Samarth Kumbhar" aria-label="Samarth Kumbhar"><img src=".github/faces/samarthtgg.svg" width="87" height="99" alt="Samarth Kumbhar" /></a>
+</p>
 <!-- readme: contributors,bots/- -end -->
 
 ## Contributing
