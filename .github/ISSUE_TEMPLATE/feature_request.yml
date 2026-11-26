@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an improvement to ConnectX
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Explain the user need, not just the proposed solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe how you think it should work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you considered.
+    validations:
+      required: false
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Important constraints
+      options:
+        - label: Should work well on Android/mobile.
+          required: false
+        - label: Should avoid paid APIs or subscriptions.
+          required: false
+        - label: Should preserve existing privacy and security controls.
+          required: true
