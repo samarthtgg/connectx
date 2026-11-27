@@ -25,6 +25,11 @@ export const metadata: Metadata = {
   description:
     "Chat with friends on ConnectX. Send private messages, join group conversations, share status updates, and connect with voice and video calls.",
   applicationName: "ConnectX",
+  icons: {
+    icon: "/icon.jpg",
+    shortcut: "/icon.jpg",
+    apple: "/icon.jpg",
+  },
   keywords: [
     "ConnectX",
     "ConnectX chat",
